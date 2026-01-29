@@ -1,0 +1,358 @@
+package main
+
+import (
+	"bufio"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"encoding/base64"
+	"fmt"
+	"log"
+	"os"
+	"os/exec"
+	"runtime"
+	"strings"
+	"time"
+
+	"github.com/cloudflare/circl/kem/kyber/kyber768"
+)
+
+// clearScreen clears the terminal screen
+func clearScreen() {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/c", "cls")
+	} else {
+		cmd = exec.Command("clear")
+	}
+	cmd.Stdout = os.Stdout
+	cmd.Run()
+}
+
+// saveKeypair saves the Kyber768 keypair to disk
+func saveKeypair(publicKey *kyber768.PublicKey, privateKey *kyber768.PrivateKey) error {
+	pubBytes, err := publicKey.MarshalBinary()
+	if err != nil {
+		return err
+	}
+	privBytes, err := privateKey.MarshalBinary()
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile("public.key", pubBytes, 0644)
+	if err != nil {
+		return err
+	}
+
+	err = os.WriteFile("private.key", privBytes, 0600)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// loadKeypair loads the Kyber768 keypair from disk
+func loadKeypair() (*kyber768.PublicKey, *kyber768.PrivateKey, error) {
+	pubBytes, err := os.ReadFile("public.key")
+	if err != nil {
+		return nil, nil, err
+	}
+	privBytes, err := os.ReadFile("private.key")
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Use the scheme to unmarshal the keys
+	scheme := kyber768.Scheme()
+
+	publicKey, err := scheme.UnmarshalBinaryPublicKey(pubBytes)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	privateKey, err := scheme.UnmarshalBinaryPrivateKey(privBytes)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Convert to the specific types we need
+	pk := publicKey.(*kyber768.PublicKey)
+	sk := privateKey.(*kyber768.PrivateKey)
+
+	return pk, sk, nil
+}
+
+// openFile handles file operations: create, read, write, delete
+func openFile(path string, text string, operation string) (string, error) {
+	/*
+		This function opens, reads, or modifies a given file.
+		@Params:
+		  path (path to access the file and file name)
+		  text (text to insert into the file if needed)
+		  operation (type of operation of the given file, 'create'|'read'|'write'|'delete')
+	*/
+	switch operation {
+	case "create":
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL, 0644)
+		if err != nil {
+			return "", err
+		}
+		defer f.Close()
+		return "", nil
+	case "write":
+		f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			return "", err
+		}
+		defer f.Close()
+
+		_, err = f.WriteString(text)
+		if err != nil {
+			return "", err
+		}
+		return "", nil
+	case "read":
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return "", err
+		}
+		return string(data), nil
+	case "delete":
+		err := os.Remove(path)
+		if err != nil {
+			return "", err
+		}
+		return "", nil
+
+	default:
+		return "", fmt.Errorf("unknown operation: %s, please enter a valid operation", operation)
+	}
+}
+
+// kryptonEncryption encrypts text using Kyber768 + AES-256-GCM (post-quantum safe)
+// Returns: encapsulated_secret, nonce, encrypted_password, error
+func kryptonEncryption(text string, publicKey *kyber768.PublicKey) ([]byte, []byte, []byte, error) {
+	// Encapsulate with Kyber to get shared secret
+	ct := make([]byte, kyber768.CiphertextSize)
+	ss := make([]byte, kyber768.SharedKeySize)
+
+	publicKey.EncapsulateTo(ct, ss, nil)
+
+	// Use the shared secret (32 bytes) for AES-256
+	block, err := aes.NewCipher(ss[:32])
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	// Create GCM mode
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	// Generate a random nonce (12 bytes for GCM)
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(nonce); err != nil {
+		return nil, nil, nil, err
+	}
+
+	// Encrypt the plaintext with AES-256-GCM
+	ciphertext := gcm.Seal(nil, nonce, []byte(text), nil)
+
+	return ct, nonce, ciphertext, nil
+}
+
+// kryptonDecryption decrypts ciphertext using Kyber768 + AES-256-GCM (post-quantum safe)
+func kryptonDecryption(encapsulatedSecret []byte, nonce []byte, ciphertext []byte, privateKey *kyber768.PrivateKey) (string, error) {
+	// Decapsulate with Kyber to recover the shared secret
+	ss := make([]byte, kyber768.SharedKeySize)
+	privateKey.DecapsulateTo(ss, encapsulatedSecret)
+
+	// Use the shared secret (32 bytes) for AES-256
+	block, err := aes.NewCipher(ss[:32])
+	if err != nil {
+		return "", err
+	}
+
+	// Create GCM mode
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+
+	// Decrypt
+	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return string(plaintext), nil
+}
+
+// readInput reads a line from stdin
+func readInput() string {
+	reader := bufio.NewReader(os.Stdin)
+	input, _ := reader.ReadString('\n')
+	return strings.TrimSpace(input)
+}
+
+func main() {
+	// Initialize Kyber768 keypair (load from disk or generate if not exists)
+	fmt.Println("Initializing Kyber768 post-quantum keypair...")
+	var publicKey *kyber768.PublicKey
+	var privateKey *kyber768.PrivateKey
+	var err error
+
+	// Try to load existing keypair
+	publicKey, privateKey, err = loadKeypair()
+	if err != nil {
+		// Generate new keypair if not found
+		fmt.Println("No existing keypair found. Generating new one...")
+		publicKey, privateKey, err = kyber768.GenerateKeyPair(nil)
+		if err != nil {
+			log.Fatal("Failed to generate Kyber768 keypair:", err)
+		}
+		// Save the keypair for future use
+		err = saveKeypair(publicKey, privateKey)
+		if err != nil {
+			log.Fatal("Failed to save keypair:", err)
+		}
+		fmt.Println("✓ New Kyber768 keypair generated and saved")
+	} else {
+		fmt.Println("✓ Kyber768 keypair loaded from disk")
+	}
+	time.Sleep(1 * time.Second)
+
+	for {
+		clearScreen()
+		fmt.Println("#################################################################################")
+		fmt.Println("|     PassQuantum - Post-Quantum Safe Password Manager (Kyber768 + AES256)    |")
+		fmt.Println("#################################################################################")
+		fmt.Println("[If you want to add a new password, press 'Enter']")
+		fmt.Println("[If you want to see your passwords type \"see passwords\", \"See Passwords\", \"seePass\" or \"2\"]")
+		fmt.Println("[If you want to exit the program, type \"exit\", \"e\", or \"3\"]")
+		fmt.Print("_> ")
+
+		res := readInput()
+
+		// See passwords
+		if res == "see passwords" || res == "See Passwords" || res == "seePass" || res == "2" {
+			content, err := openFile("passwords.txt", "", "read")
+			if err != nil || content == "" {
+				fmt.Println("There are no passwords in your password file yet")
+				readInput()
+				continue
+			}
+
+			passwords := strings.Split(strings.TrimSpace(content), "], \n")
+
+			if len(passwords) == 0 || passwords[0] == "" {
+				fmt.Println("There are no passwords in your password file yet")
+				readInput()
+				continue
+			}
+
+			fmt.Println("Press 'Enter' to return to the main menu")
+			time.Sleep(2 * time.Second)
+			fmt.Println("Decrypting your passwords...")
+			time.Sleep(2 * time.Second)
+			fmt.Println("Solving Schrödinger's Equation...")
+			time.Sleep(2 * time.Second)
+			fmt.Println("Solving Dirac's Equation...")
+			time.Sleep(2 * time.Second)
+			fmt.Println("Your passwords are decrypted! Below are your passwords: ")
+			time.Sleep(2 * time.Second)
+
+			for _, password := range passwords {
+				if password != "" {
+					// Remove leading bracket and trailing bracket+comma if present
+					password = strings.TrimPrefix(password, "[")
+					password = strings.TrimSpace(password)
+					// Remove trailing ], characters
+					password = strings.TrimRight(password, "],")
+
+					passwordInfo := strings.Split(strings.TrimSpace(password), ", ")
+
+					if len(passwordInfo) < 3 {
+						fmt.Println("ERROR: a password in your file doesn't have all the information required to decrypt it")
+						continue
+					}
+
+					// Decode base64
+					encapsulatedSecret, err1 := base64.StdEncoding.DecodeString(passwordInfo[0])
+					nonce, err2 := base64.StdEncoding.DecodeString(passwordInfo[1])
+					encryptedPassword, err3 := base64.StdEncoding.DecodeString(passwordInfo[2])
+
+					if err1 != nil || err2 != nil || err3 != nil {
+						fmt.Println("ERROR: Failed to decode password data")
+						continue
+					}
+
+					// Decrypt using Kyber + AES
+					decryptedPass, err := kryptonDecryption(encapsulatedSecret, nonce, encryptedPassword, privateKey)
+					if err != nil {
+						fmt.Println("ERROR: Failed to decrypt password:", err)
+						continue
+					}
+
+					fmt.Println(decryptedPass)
+					time.Sleep(1 * time.Second)
+				}
+			}
+			readInput()
+
+		} else if res == "e" || res == "exit" || res == "3" {
+			clearScreen()
+			return
+
+		} else {
+			// Add new password
+			fmt.Println("Press 'Enter' to return to the main menu")
+			fmt.Print("Type a new password: ")
+			newPassword := readInput()
+
+			if newPassword == "" {
+				continue
+			}
+
+			time.Sleep(2 * time.Second)
+			fmt.Println("Creating a quantum-resistant encryption...")
+			time.Sleep(2 * time.Second)
+			fmt.Println("Putting Schrödinger's Cat inside the box...")
+
+			// Encrypt password using Kyber + AES
+			encapsulatedSecret, nonce, encryptedPass, err := kryptonEncryption(newPassword, publicKey)
+			if err != nil {
+				log.Fatal("Encryption error:", err)
+			}
+
+			time.Sleep(2 * time.Second)
+			fmt.Println("The Kyber encapsulation is successfully created!")
+			fmt.Printf("Your encapsulated secret (hex): %x\n", encapsulatedSecret[:8])
+			fmt.Println("You better keep your private key safe!!")
+			time.Sleep(2 * time.Second)
+			fmt.Println("Encrypting your password with AES-256...")
+			time.Sleep(2 * time.Second)
+			fmt.Println("Quantum interconnecting two photons...")
+			time.Sleep(2 * time.Second)
+			fmt.Printf("Your password is encrypted! \nYour encrypted password (base64): %s\n", base64.StdEncoding.EncodeToString(encryptedPass))
+
+			// Store in file
+			encodedEncapsulated := base64.StdEncoding.EncodeToString(encapsulatedSecret)
+			encodedNonce := base64.StdEncoding.EncodeToString(nonce)
+			encodedEncrypted := base64.StdEncoding.EncodeToString(encryptedPass)
+
+			fileEntry := fmt.Sprintf("[%s, %s, %s], \n", encodedEncapsulated, encodedNonce, encodedEncrypted)
+
+			_, err = openFile("passwords.txt", fileEntry, "write")
+			if err != nil {
+				log.Fatal("File write error:", err)
+			}
+
+			fmt.Println("Password saved successfully with post-quantum encryption!")
+			readInput()
+		}
+	}
+}
