@@ -11,6 +11,8 @@ import (
 // The entry also contains the Kyber768 encapsulated secret for hybrid encryption
 type PasswordEntry struct {
 	ID              uint64 // Unique identifier (4 bytes + reserved for future use)
+	Service         string // Service/website name (e.g., "Gmail", "GitHub")
+	Username        string // Username or email associated with the password
 	KyberCiphertext []byte // Kyber768 encapsulated secret (~1088 bytes)
 	Nonce           []byte // AES-GCM nonce (12 bytes)
 	Ciphertext      []byte // AES-256-GCM encrypted password (variable)
@@ -30,6 +32,10 @@ func NewPasswordEntry() *PasswordEntry {
 // Serialize encodes the password entry to binary format for storage in vault
 // Format:
 // - ID (8 bytes, big-endian)
+// - Service length (2 bytes, big-endian)
+// - Service (variable)
+// - Username length (2 bytes, big-endian)
+// - Username (variable)
 // - KyberCiphertext length (2 bytes, big-endian)
 // - KyberCiphertext (variable)
 // - Nonce (12 bytes, fixed)
@@ -37,7 +43,7 @@ func NewPasswordEntry() *PasswordEntry {
 // - Ciphertext (variable)
 func (pe *PasswordEntry) Serialize() []byte {
 	// Calculate total size
-	size := 8 + 2 + len(pe.KyberCiphertext) + 12 + 2 + len(pe.Ciphertext)
+	size := 8 + 2 + len(pe.Service) + 2 + len(pe.Username) + 2 + len(pe.KyberCiphertext) + 12 + 2 + len(pe.Ciphertext)
 	data := make([]byte, size)
 
 	idx := 0
@@ -45,6 +51,18 @@ func (pe *PasswordEntry) Serialize() []byte {
 	// Write ID
 	binary.BigEndian.PutUint64(data[idx:idx+8], pe.ID)
 	idx += 8
+
+	// Write Service length and data
+	binary.BigEndian.PutUint16(data[idx:idx+2], uint16(len(pe.Service)))
+	idx += 2
+	copy(data[idx:], pe.Service)
+	idx += len(pe.Service)
+
+	// Write Username length and data
+	binary.BigEndian.PutUint16(data[idx:idx+2], uint16(len(pe.Username)))
+	idx += 2
+	copy(data[idx:], pe.Username)
+	idx += len(pe.Username)
 
 	// Write KyberCiphertext length and data
 	binary.BigEndian.PutUint16(data[idx:idx+2], uint16(len(pe.KyberCiphertext)))
@@ -66,7 +84,7 @@ func (pe *PasswordEntry) Serialize() []byte {
 
 // Deserialize decodes a binary-encoded password entry
 func Deserialize(data []byte) (*PasswordEntry, error) {
-	if len(data) < 8+2+12+2 {
+	if len(data) < 8+2+2+2+12+2 {
 		return nil, fmt.Errorf("invalid password entry: too short")
 	}
 
@@ -75,6 +93,24 @@ func Deserialize(data []byte) (*PasswordEntry, error) {
 	// Read ID
 	id := binary.BigEndian.Uint64(data[idx : idx+8])
 	idx += 8
+
+	// Read Service length and data
+	serviceLen := int(binary.BigEndian.Uint16(data[idx : idx+2]))
+	idx += 2
+	if len(data) < idx+serviceLen {
+		return nil, fmt.Errorf("invalid password entry: truncated service")
+	}
+	service := string(data[idx : idx+serviceLen])
+	idx += serviceLen
+
+	// Read Username length and data
+	usernameLen := int(binary.BigEndian.Uint16(data[idx : idx+2]))
+	idx += 2
+	if len(data) < idx+usernameLen {
+		return nil, fmt.Errorf("invalid password entry: truncated username")
+	}
+	username := string(data[idx : idx+usernameLen])
+	idx += usernameLen
 
 	// Read KyberCiphertext length and data
 	kyberLen := int(binary.BigEndian.Uint16(data[idx : idx+2]))
@@ -101,6 +137,8 @@ func Deserialize(data []byte) (*PasswordEntry, error) {
 
 	return &PasswordEntry{
 		ID:              id,
+		Service:         service,
+		Username:        username,
 		KyberCiphertext: kyberCiphertext,
 		Nonce:           nonce,
 		Ciphertext:      ciphertext,

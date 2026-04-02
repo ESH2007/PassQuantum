@@ -1,3 +1,7 @@
 passwords.txt
 .idea/
 .venv/
+*.dmg
+SDKs/
+vendor/
+osxcross/

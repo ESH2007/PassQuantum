@@ -13,11 +13,7 @@ const DefaultVaultFile = "vault.pqdb"
 // WriteVault encrypts and writes password entries to a vault file
 // All data is encrypted - no plaintext stored
 func WriteVault(entries []*model.PasswordEntry, vaultPath string, encryptionKey []byte, verificationKey []byte, kdfParams crypto.KDFParams) error {
-	// Serialize all entries into binary format
-	plaintext := make([]byte, 0)
-	for _, entry := range entries {
-		plaintext = append(plaintext, entry.Serialize()...)
-	}
+	plaintext := serializeEntries(entries)
 
 	// Encrypt the vault
 	vault, err := crypto.EncryptVault(plaintext, encryptionKey, verificationKey, kdfParams)
@@ -64,6 +60,73 @@ func ReadVault(vaultPath string, encryptionKey []byte, verificationKey []byte) (
 	idx := 0
 
 	for idx < len(plaintext) {
+<<<<<<< HEAD
+		// Entry format: ID(8) + ServiceLen(2) + Service + UsernameLen(2) + Username + KyberLen(2) + Kyber + Nonce(12) + CiphertextLen(2) + Ciphertext
+		// Minimum entry size: 8 + 2 + 0 + 2 + 0 + 2 + 0 + 12 + 2 + 0 = 30 bytes
+		if idx+30 > len(plaintext) {
+			break
+		}
+
+		// Read Service length at offset 8
+
+		// Read Service
+		servicePosStart := idx + 10
+		servicePos := servicePosStart + serviceLen
+
+		// Check bounds for Service
+		if servicePos > len(plaintext) {
+			break
+		}
+
+		// Read Username length
+		usernameLenPos := servicePos
+		if usernameLenPos+2 > len(plaintext) {
+			break
+		}
+		usernameLen := int(plaintext[usernameLenPos])<<8 | int(plaintext[usernameLenPos+1])
+
+		// Read Username
+		usernamePosStart := usernameLenPos + 2
+		usernamePos := usernamePosStart + usernameLen
+
+		// Check bounds for Username
+		if usernamePos+2 > len(plaintext) {
+			break
+		}
+
+		// Read Kyber length
+		kyberLenPos := usernamePos
+		kyberLen := int(plaintext[kyberLenPos])<<8 | int(plaintext[kyberLenPos+1])
+
+		// Read Kyber ciphertext
+		kyberPosStart := kyberLenPos + 2
+		kyberPos := kyberPosStart + kyberLen
+
+		// Check bounds for Kyber
+		if kyberPos+12+2 > len(plaintext) {
+			break
+		}
+
+		// Read Nonce (12 bytes)
+		noncePos := kyberPos
+		nonceEnd := noncePos + 12
+
+		// Read Ciphertext length
+		ciphertextLenPos := nonceEnd
+		ciphertextLen := int(plaintext[ciphertextLenPos])<<8 | int(plaintext[ciphertextLenPos+1])
+
+		// Read Ciphertext
+		ciphertextPosStart := ciphertextLenPos + 2
+		ciphertextPos := ciphertextPosStart + ciphertextLen
+
+		// Check bounds for Ciphertext
+		if ciphertextPos > len(plaintext) {
+			break
+		}
+
+		// Total entry size
+		totalEntrySize := ciphertextPos - idx
+=======
 		// Minimum entry size: 8 + 2 + 0 + 12 + 2 = 24 bytes
 		if idx+24 > len(plaintext) {
 			break
@@ -71,44 +134,6 @@ func ReadVault(vaultPath string, encryptionKey []byte, verificationKey []byte) (
 
 		// Try to read an entry
 		// Entry format: ID(8) + KyberLen(2) + Kyber(variable) + Nonce(12) + CiphertextLen(2) + Ciphertext(variable)
-		// All multi-byte values are in big-endian format
-
-		// Read KyberLen in big-endian format at offset 8
-		kyberLen := int(plaintext[idx+8])<<8 | int(plaintext[idx+9])
-
-		// Position after ID and KyberLen and Kyber data
-		posAfterKyber := idx + 8 + 2 + kyberLen
-
-		// Position of Nonce is right after Kyber data
-		posNonce := posAfterKyber
-		posAfterNonce := posNonce + 12
-
-		// Position of CiphertextLen is after Nonce
-		posCiphertextLen := posAfterNonce
-
-		// Check if we have room for CiphertextLen (2 bytes)
-		if posCiphertextLen+2 > len(plaintext) {
-			break
-		}
-
-		// Read CiphertextLen in big-endian format
-		ciphertextLen := int(plaintext[posCiphertextLen])<<8 | int(plaintext[posCiphertextLen+1])
-
-		// Total entry size: ID(8) + KyberLen(2) + Kyber(kyberLen) + Nonce(12) + CiphertextLen(2) + Ciphertext(ciphertextLen)
-		totalEntrySize := 8 + 2 + kyberLen + 12 + 2 + ciphertextLen
-
-		// Check if we have the full entry
-		if idx+totalEntrySize > len(plaintext) {
-			break
-		}
-
-		// Extract and parse this entry
-		entryData := plaintext[idx : idx+totalEntrySize]
-		entry, err := model.Deserialize(entryData)
-		if err != nil {
-			// Skip malformed entries
-			fmt.Fprintf(os.Stderr, "warning: skipped malformed entry: %v\n", err)
-			idx += totalEntrySize
 			continue
 		}
 

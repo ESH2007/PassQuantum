@@ -5,6 +5,7 @@ go 1.22
 require (
 	fyne.io/fyne/v2 v2.6.0
 	github.com/cloudflare/circl v1.3.7
+	gocv.io/x/gocv v0.33.0
 	golang.org/x/crypto v0.33.0
 )
 
