@@ -15,10 +15,12 @@
 package biometric
 
 import (
+	"bytes"
 	"fmt"
 	"image"
 	"image/color"
 	"os"
+	"strings"
 
 	"gocv.io/x/gocv"
 )
@@ -83,6 +85,9 @@ func NewFaceMesh(modelPath string) (*FaceMesh, error) {
 	if err := ValidateModelFile(modelPath); err != nil {
 		return nil, fmt.Errorf("Face Mesh model at %q is invalid: %w", modelPath, err)
 	}
+	if err := validateFaceMeshOpenCVCompatibility(modelPath); err != nil {
+		return nil, err
+	}
 	net := gocv.ReadNetFromONNX(modelPath)
 	if net.Empty() {
 		return nil, fmt.Errorf("failed to load Face Mesh model from %q: verify the file exists and is a valid ONNX model", modelPath)
@@ -90,6 +95,30 @@ func NewFaceMesh(modelPath string) (*FaceMesh, error) {
 	net.SetPreferableBackend(gocv.NetBackendDefault)
 	net.SetPreferableTarget(gocv.NetTargetCPU)
 	return &FaceMesh{net: net}, nil
+}
+
+func validateFaceMeshOpenCVCompatibility(modelPath string) error {
+	opencvVersion := gocv.OpenCVVersion()
+	// OpenCV 4.6.x cannot load some FaceMesh exports that include this Split node
+	// layout, and can abort in native C++ instead of returning a Go error.
+	if !strings.HasPrefix(opencvVersion, "4.6.") {
+		return nil
+	}
+
+	data, err := os.ReadFile(modelPath)
+	if err != nil {
+		return fmt.Errorf("failed to read Face Mesh model for compatibility check: %w", err)
+	}
+
+	if bytes.Contains(data, []byte("Split__284")) {
+		return fmt.Errorf(
+			"Face Mesh model %q is incompatible with OpenCV %s (known Split node parser issue). Use an OpenCV-4.6-compatible Face Mesh ONNX export or build with -tags nobiometric",
+			modelPath,
+			opencvVersion,
+		)
+	}
+
+	return nil
 }
 
 // Close releases native resources held by the FaceMesh.

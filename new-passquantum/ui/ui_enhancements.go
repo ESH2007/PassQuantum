@@ -32,8 +32,9 @@ func CreateEnhancedCard(content fyne.CanvasObject, width, height float32) fyne.C
 	outerGlow.SetMinSize(fyne.NewSize(width+6, height+6))
 	outerGlow.CornerRadius = BorderRadius + 2
 
-	// Start glow animation
-	go animateCardGlow(borderGlow, outerGlow)
+	// Keep static glow to avoid cross-thread refresh warnings in older Fyne runtimes.
+	borderGlow.FillColor = color.NRGBA{R: ColorBorderCyan.R, G: ColorBorderCyan.G, B: ColorBorderCyan.B, A: 120}
+	outerGlow.FillColor = color.NRGBA{R: ColorBorderCyan.R, G: ColorBorderCyan.G, B: ColorBorderCyan.B, A: 20}
 
 	return container.NewStack(
 		container.NewCenter(outerGlow),
@@ -195,29 +196,7 @@ func CreateStatusIndicator(statusText string, statusType string) fyne.CanvasObje
 func CreateGlowingDivider() fyne.CanvasObject {
 	line := canvas.NewRectangle(ColorBorderCyan)
 	line.SetMinSize(fyne.NewSize(500, 2))
-
-	// Animate glow
-	go func() {
-		ticker := time.NewTicker(time.Millisecond * 100)
-		defer ticker.Stop()
-
-		phase := 0.0
-		for range ticker.C {
-			phase += 0.05
-			if phase > 6.28 {
-				phase = 0
-			}
-
-			pulse := math.Sin(phase)
-			alpha := uint8(100 + pulse*80)
-
-			// Update UI on main thread
-			fyne.Do(func() {
-				line.FillColor = color.NRGBA{R: 34, G: 211, B: 238, A: alpha}
-				line.Refresh()
-			})
-		}
-	}()
+	line.FillColor = color.NRGBA{R: 34, G: 211, B: 238, A: 120}
 
 	return line
 }

@@ -60,7 +60,6 @@ func ReadVault(vaultPath string, encryptionKey []byte, verificationKey []byte) (
 	idx := 0
 
 	for idx < len(plaintext) {
-<<<<<<< HEAD
 		// Entry format: ID(8) + ServiceLen(2) + Service + UsernameLen(2) + Username + KyberLen(2) + Kyber + Nonce(12) + CiphertextLen(2) + Ciphertext
 		// Minimum entry size: 8 + 2 + 0 + 2 + 0 + 2 + 0 + 12 + 2 + 0 = 30 bytes
 		if idx+30 > len(plaintext) {
@@ -68,6 +67,8 @@ func ReadVault(vaultPath string, encryptionKey []byte, verificationKey []byte) (
 		}
 
 		// Read Service length at offset 8
+		serviceLenPos := idx + 8
+		serviceLen := int(plaintext[serviceLenPos])<<8 | int(plaintext[serviceLenPos+1])
 
 		// Read Service
 		servicePosStart := idx + 10
@@ -126,15 +127,10 @@ func ReadVault(vaultPath string, encryptionKey []byte, verificationKey []byte) (
 
 		// Total entry size
 		totalEntrySize := ciphertextPos - idx
-=======
-		// Minimum entry size: 8 + 2 + 0 + 12 + 2 = 24 bytes
-		if idx+24 > len(plaintext) {
-			break
-		}
 
-		// Try to read an entry
-		// Entry format: ID(8) + KyberLen(2) + Kyber(variable) + Nonce(12) + CiphertextLen(2) + Ciphertext(variable)
-			continue
+		entry, err := model.Deserialize(plaintext[idx:ciphertextPos])
+		if err != nil {
+			break
 		}
 
 		entries = append(entries, entry)

@@ -2,6 +2,8 @@ package main
 
 import (
 	"log"
+	"os"
+	"strings"
 	"sync"
 
 	"fyne.io/fyne/v2/app"
@@ -43,6 +45,8 @@ type AppState struct {
 }
 
 func main() {
+	normalizeLocaleForFyne()
+
 	myApp := app.New()
 	w := myApp.NewWindow("PassQuantum - Post-Quantum Safe Password Manager")
 	w.SetTitle("PassQuantum - Post-Quantum Safe Password Manager")
@@ -55,6 +59,23 @@ func main() {
 	PromptMasterPassword(w, myApp, appState)
 
 	w.ShowAndRun()
+}
+
+// normalizeLocaleForFyne avoids startup locale parse failures when environments use
+// bare C/POSIX locale identifiers.
+func normalizeLocaleForFyne() {
+	fix := func(key string) {
+		v := strings.TrimSpace(os.Getenv(key))
+		if v == "" || v == "C" || v == "POSIX" {
+			_ = os.Setenv(key, "en_US.UTF-8")
+		}
+	}
+
+	fix("LC_ALL")
+	fix("LANG")
+	fix("LANGUAGE")
+	fix("LC_MESSAGES")
+	fix("LC_CTYPE")
 }
 
 func initializeApp() *AppState {
