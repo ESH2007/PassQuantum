@@ -16,11 +16,14 @@ package biometric
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"image"
 	"image/color"
+	"log"
 	"os"
-	"strings"
+	"runtime"
+	"sync"
 
 	"gocv.io/x/gocv"
 )
@@ -30,6 +33,8 @@ const (
 	faceMeshInputSize     = 192 // MediaPipe Face Mesh input resolution (px)
 	faceMeshLandmarkCount = 468
 )
+
+var blazeFaceBlobShapeLogOnce sync.Once
 
 // FaceDetector wraps a BlazeFace ONNX net for face detection and ROI cropping.
 type FaceDetector struct {
@@ -85,7 +90,8 @@ func NewFaceMesh(modelPath string) (*FaceMesh, error) {
 	if err := ValidateModelFile(modelPath); err != nil {
 		return nil, fmt.Errorf("Face Mesh model at %q is invalid: %w", modelPath, err)
 	}
-	if err := validateFaceMeshOpenCVCompatibility(modelPath); err != nil {
+	opsetLabel, err := validateFaceMeshOpenCVCompatibility(modelPath)
+	if err != nil {
 		return nil, err
 	}
 	net := gocv.ReadNetFromONNX(modelPath)
@@ -94,31 +100,168 @@ func NewFaceMesh(modelPath string) (*FaceMesh, error) {
 	}
 	net.SetPreferableBackend(gocv.NetBackendDefault)
 	net.SetPreferableTarget(gocv.NetTargetCPU)
+	log.Printf("biometric: loaded Face Mesh model %q (opset=%s)", modelPath, opsetLabel)
 	return &FaceMesh{net: net}, nil
 }
 
-func validateFaceMeshOpenCVCompatibility(modelPath string) error {
+func validateFaceMeshOpenCVCompatibility(modelPath string) (string, error) {
 	opencvVersion := gocv.OpenCVVersion()
-	// OpenCV 4.6.x cannot load some FaceMesh exports that include this Split node
-	// layout, and can abort in native C++ instead of returning a Go error.
-	if !strings.HasPrefix(opencvVersion, "4.6.") {
-		return nil
-	}
 
 	data, err := os.ReadFile(modelPath)
 	if err != nil {
-		return fmt.Errorf("failed to read Face Mesh model for compatibility check: %w", err)
+		return "unknown", fmt.Errorf("failed to read Face Mesh model for compatibility check: %w", err)
 	}
 
-	if bytes.Contains(data, []byte("Split__284")) {
-		return fmt.Errorf(
-			"Face Mesh model %q is incompatible with OpenCV %s (known Split node parser issue). Use an OpenCV-4.6-compatible Face Mesh ONNX export or build with -tags nobiometric",
+	opsetLabel := "unknown"
+	if opsetVersion, ok := detectDefaultONNXOpsetVersion(data); ok {
+		opsetLabel = fmt.Sprintf("%d", opsetVersion)
+	}
+
+	if runtime.GOOS != "windows" {
+		return opsetLabel, nil
+	}
+
+	// This model signature is known to trigger native OpenCV DNN crashes on some
+	// Windows builds instead of returning a regular Go error.
+	if bytes.Contains(data, []byte("Split")) {
+		return opsetLabel, fmt.Errorf(
+			"Face Mesh model %q is incompatible with OpenCV %s on Windows (Split-node ONNX parser issue that can crash the process). Replace models with PINTO OpenCV-compatible exports: face_mesh.onnx=%s blazeface.onnx=%s",
 			modelPath,
 			opencvVersion,
+			"https://github.com/PINTO0309/PINTO_model_zoo/raw/main/032_FaceMesh/01_float32/face_mesh.onnx",
+			"https://github.com/PINTO0309/PINTO_model_zoo/raw/main/030_BlazeFace/01_float32/blazeface.onnx",
 		)
 	}
 
-	return nil
+	return opsetLabel, nil
+}
+
+func detectDefaultONNXOpsetVersion(data []byte) (int64, bool) {
+	idx := 0
+	var fallbackVersion int64
+	hasFallback := false
+
+	for idx < len(data) {
+		tag, n := binary.Uvarint(data[idx:])
+		if n <= 0 {
+			return 0, false
+		}
+		idx += n
+
+		fieldNum := int(tag >> 3)
+		wireType := int(tag & 0x7)
+
+		switch wireType {
+		case 0:
+			_, n = binary.Uvarint(data[idx:])
+			if n <= 0 {
+				return 0, false
+			}
+			idx += n
+		case 1:
+			if idx+8 > len(data) {
+				return 0, false
+			}
+			idx += 8
+		case 2:
+			msgLen, n := binary.Uvarint(data[idx:])
+			if n <= 0 {
+				return 0, false
+			}
+			idx += n
+			end := idx + int(msgLen)
+			if end > len(data) {
+				return 0, false
+			}
+
+			if fieldNum == 8 {
+				version, isDefault, ok := parseOpsetImportEntry(data[idx:end])
+				if ok {
+					if isDefault {
+						return version, true
+					}
+					if !hasFallback {
+						fallbackVersion = version
+						hasFallback = true
+					}
+				}
+			}
+
+			idx = end
+		case 5:
+			if idx+4 > len(data) {
+				return 0, false
+			}
+			idx += 4
+		default:
+			return 0, false
+		}
+	}
+
+	return fallbackVersion, hasFallback
+}
+
+func parseOpsetImportEntry(data []byte) (int64, bool, bool) {
+	idx := 0
+	domain := ""
+	var version int64
+	hasVersion := false
+
+	for idx < len(data) {
+		tag, n := binary.Uvarint(data[idx:])
+		if n <= 0 {
+			return 0, false, false
+		}
+		idx += n
+
+		fieldNum := int(tag >> 3)
+		wireType := int(tag & 0x7)
+
+		switch wireType {
+		case 0:
+			value, n := binary.Uvarint(data[idx:])
+			if n <= 0 {
+				return 0, false, false
+			}
+			idx += n
+			if fieldNum == 2 {
+				version = int64(value)
+				hasVersion = true
+			}
+		case 1:
+			if idx+8 > len(data) {
+				return 0, false, false
+			}
+			idx += 8
+		case 2:
+			fieldLen, n := binary.Uvarint(data[idx:])
+			if n <= 0 {
+				return 0, false, false
+			}
+			idx += n
+			end := idx + int(fieldLen)
+			if end > len(data) {
+				return 0, false, false
+			}
+			if fieldNum == 1 {
+				domain = string(data[idx:end])
+			}
+			idx = end
+		case 5:
+			if idx+4 > len(data) {
+				return 0, false, false
+			}
+			idx += 4
+		default:
+			return 0, false, false
+		}
+	}
+
+	if !hasVersion {
+		return 0, false, false
+	}
+
+	return version, domain == "", true
 }
 
 // Close releases native resources held by the FaceMesh.
@@ -173,21 +316,39 @@ func (fd *FaceDetector) DetectAndCrop(frame gocv.Mat) (gocv.Mat, error) {
 	resized := gocv.NewMat()
 	defer resized.Close()
 	gocv.Resize(frame, &resized,
-		image.Point{X: faceDetectorInputSize, Y: faceDetectorInputSize},
+		image.Pt(faceDetectorInputSize, faceDetectorInputSize),
 		0, 0, gocv.InterpolationLinear)
 
 	blob := gocv.BlobFromImage(
 		resized,
 		1.0/127.5,
-		image.Point{X: faceDetectorInputSize, Y: faceDetectorInputSize},
+		image.Pt(faceDetectorInputSize, faceDetectorInputSize),
 		gocv.NewScalar(127.5, 127.5, 127.5, 0),
 		true, false,
 	)
 	defer blob.Close()
 
+	blobShape := blob.Size()
+	if len(blobShape) != 4 ||
+		blobShape[0] != 1 ||
+		blobShape[1] != 3 ||
+		blobShape[2] != faceDetectorInputSize ||
+		blobShape[3] != faceDetectorInputSize {
+		return gocv.NewMat(), fmt.Errorf(
+			"unexpected BlazeFace blob shape %v; expected [1 3 %d %d] (NCHW)",
+			blobShape,
+			faceDetectorInputSize,
+			faceDetectorInputSize,
+		)
+	}
+
 	fd.net.SetInput(blob, "")
 	detections := fd.net.Forward("")
 	defer detections.Close()
+
+	blazeFaceBlobShapeLogOnce.Do(func() {
+		log.Printf("biometric: BlazeFace forward OK, blob shape=%v", blobShape)
+	})
 
 	data, err := detections.DataPtrFloat32()
 	if err != nil || len(data) < 5 {

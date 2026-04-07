@@ -178,6 +178,7 @@ func buildBiometricSettingsSection(w fyne.Window, fyneApp fyne.App, appState *Ap
 		appState.mu.Lock()
 		currentEnabled := appState.biometricEnabled
 		currentHasTemplate := len(appState.biometricTemplate) > 0
+		currentCameraIndex := appState.biometricCameraIndex
 		appState.mu.Unlock()
 
 		currentStatusText := "Disabled"
@@ -211,7 +212,40 @@ func buildBiometricSettingsSection(w fyne.Window, fyneApp fyne.App, appState *Ap
 			}
 		}, 260, 38)
 
-		items := []fyne.CanvasObject{toggleBtn}
+		cameraOptions, cameraOptionToIndex, autoLabel, selectedCamera := buildBiometricCameraOptions(currentCameraIndex)
+		cameraSelect := widget.NewSelect(cameraOptions, nil)
+		cameraSelect.SetSelected(selectedCamera)
+		cameraSelect.OnChanged = func(choice string) {
+			if choice == selectedCamera {
+				return
+			}
+
+			appState.mu.Lock()
+			if choice == autoLabel {
+				appState.biometricCameraIndex = nil
+			} else if idx, ok := cameraOptionToIndex[choice]; ok {
+				v := idx
+				appState.biometricCameraIndex = &v
+			}
+			appState.mu.Unlock()
+
+			if err := saveBiometricToProfile(appState); err != nil {
+				ShowAppError(err, w)
+				return
+			}
+
+			if refreshSection != nil {
+				refreshSection()
+			}
+		}
+
+		items := []fyne.CanvasObject{
+			CreateLabel("Camera Source:", 10, ColorTextSec, false),
+			cameraSelect,
+			CreateLabel("Tip: Auto picks the first working camera. Set a specific index to lock the source.", 9, ColorTextSec, false),
+			widget.NewLabel(""),
+			toggleBtn,
+		}
 
 		if currentEnabled {
 			// Enrol / re-enrol button.
@@ -243,6 +277,41 @@ func buildBiometricSettingsSection(w fyne.Window, fyneApp fyne.App, appState *Ap
 		widget.NewLabel(""),
 		contentBox,
 	)
+}
+
+func buildBiometricCameraOptions(currentIndex *int) ([]string, map[string]int, string, string) {
+	autoLabel := "Auto (first working camera)"
+	options := []string{autoLabel}
+	optionToIndex := make(map[string]int)
+	selected := autoLabel
+
+	names := GetCameraDevicePaths()
+	maxIndex := len(names)
+	if maxIndex < 4 {
+		maxIndex = 4
+	}
+
+	for idx := 0; idx < maxIndex; idx++ {
+		label := fmt.Sprintf("Index %d", idx)
+		if idx < len(names) {
+			label = fmt.Sprintf("Index %d - %s", idx, names[idx])
+		}
+		options = append(options, label)
+		optionToIndex[label] = idx
+
+		if currentIndex != nil && *currentIndex == idx {
+			selected = label
+		}
+	}
+
+	if currentIndex != nil && selected == autoLabel {
+		custom := fmt.Sprintf("Index %d (custom)", *currentIndex)
+		options = append(options, custom)
+		optionToIndex[custom] = *currentIndex
+		selected = custom
+	}
+
+	return options, optionToIndex, autoLabel, selected
 }
 
 // showEnrolmentDialog opens a snapshot-capture dialog: the webcam is opened,
@@ -324,12 +393,11 @@ func showEnrolmentDialog(w fyne.Window, fyneApp fyne.App, appState *AppState, on
 
 	captureDialog = dialog.NewCustomWithoutButtons("", container.NewPadded(CreateCard(content, 440, 0, true)), w)
 
-	stopPreview := startEnrollmentPreview(previewImg, statusLabel)
+	stopPreview := startEnrollmentPreview(appState, previewImg, statusLabel)
 	captureDialog.SetOnClosed(func() { stopPreview() })
 
 	captureDialog.Show()
 }
-
 
 func buildVaultSettings(w fyne.Window, fyneApp fyne.App, appState *AppState) *fyne.Container {
 	currentVaultLabel := CreateLabel("Current Vault: "+appState.currentVault, 10, ColorTextSec, false)

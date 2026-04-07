@@ -14,9 +14,12 @@ Optional:
 #>
 
 param(
-    [string]$ProjectRoot = "C:\dev\PassQuantum\new-passquantum",
+    [string]$ProjectRoot = "C:\Users\Lenovo\OneDrive\Documents\Projectos-VSCode2\PassQuantum\new-passquantum",
     [switch]$SkipInstalls
 )
+
+$BlazeFaceModelURL = "https://github.com/PINTO0309/PINTO_model_zoo/raw/main/030_BlazeFace/01_float32/blazeface.onnx"
+$FaceMeshModelURL  = "https://github.com/PINTO0309/PINTO_model_zoo/raw/main/032_FaceMesh/01_float32/face_mesh.onnx"
 
 $ErrorActionPreference = "Stop"
 
@@ -78,33 +81,88 @@ function Ensure-ProjectRoot {
     Write-Ok "Using project root: $resolved"
 }
 
+function Test-ModelFile([string]$modelPath) {
+    if (-not (Test-Path $modelPath)) {
+        return "missing"
+    }
+
+    $bytes = [System.IO.File]::ReadAllBytes($modelPath)
+    if ($bytes.Length -lt 1024) {
+        return "too-small"
+    }
+
+    $headLen = [Math]::Min($bytes.Length, 256)
+    $headRaw = [System.Text.Encoding]::UTF8.GetString($bytes, 0, $headLen)
+    $head = $headRaw.Trim().ToLowerInvariant()
+
+    if ($head.StartsWith("<!doctype html") -or $head.StartsWith("<html")) {
+        return "html"
+    }
+    if ($head.StartsWith("version https://git-lfs.github.com/spec/v1")) {
+        return "git-lfs"
+    }
+
+    return "ok"
+}
+
+function Download-Model([string]$url, [string]$destination) {
+    if ($SkipInstalls) {
+        throw "Model download needed but -SkipInstalls was passed. Download manually: $url"
+    }
+
+    $destDir = Split-Path -Parent $destination
+    if (-not (Test-Path $destDir)) {
+        New-Item -Path $destDir -ItemType Directory -Force | Out-Null
+    }
+
+    Write-Info "Downloading model: $url"
+    $downloaded = $false
+
+    $curlCmd = Get-Command "curl.exe" -ErrorAction SilentlyContinue
+    if ($curlCmd) {
+        & $curlCmd.Path -L --fail --silent --show-error -o $destination $url
+        if ($LASTEXITCODE -eq 0) {
+            $downloaded = $true
+        }
+    }
+
+    if (-not $downloaded) {
+        try {
+            Invoke-WebRequest -Uri $url -OutFile $destination -UseBasicParsing
+            $downloaded = $true
+        }
+        catch {
+            throw "Failed to download model from ${url}: $($_.Exception.Message)"
+        }
+    }
+
+    Write-Ok "Downloaded model: $destination"
+}
+
 function Ensure-Models {
     $blaze = Join-Path $ProjectRoot "models\blazeface.onnx"
     $mesh  = Join-Path $ProjectRoot "models\face_mesh.onnx"
 
-    foreach ($model in @($blaze, $mesh)) {
-        if (-not (Test-Path $model)) {
-            throw "Missing model file: $model"
-        }
+    $sources = @(
+        @{ Name = "BlazeFace"; Path = $blaze; URL = $BlazeFaceModelURL },
+        @{ Name = "FaceMesh";  Path = $mesh;  URL = $FaceMeshModelURL }
+    )
 
-        $bytes = [System.IO.File]::ReadAllBytes($model)
-        if ($bytes.Length -lt 1024) {
-            throw "Model file too small to be valid ONNX: $model ($($bytes.Length) bytes)"
-        }
-
-        $headLen = [Math]::Min($bytes.Length, 256)
-        $headRaw = [System.Text.Encoding]::UTF8.GetString($bytes, 0, $headLen)
-        $head = $headRaw.Trim().ToLowerInvariant()
-
-        if ($head.StartsWith("<!doctype html") -or $head.StartsWith("<html")) {
-            throw "Model file appears to be HTML placeholder, not ONNX binary: $model"
-        }
-        if ($head.StartsWith("version https://git-lfs.github.com/spec/v1")) {
-            throw "Model file is a git-lfs pointer, not ONNX binary: $model"
+    foreach ($source in $sources) {
+        $status = Test-ModelFile $source.Path
+        if ($status -ne "ok") {
+            Write-Info "$($source.Name) model at $($source.Path) is '$status'. Refreshing from PINTO source."
+            Download-Model -url $source.URL -destination $source.Path
+            $status = Test-ModelFile $source.Path
+            if ($status -ne "ok") {
+                throw "$($source.Name) model is still invalid after download ($status): $($source.Path). Source URL: $($source.URL)"
+            }
+        } else {
+            Write-Ok "$($source.Name) model present: $($source.Path)"
         }
     }
 
-    Write-Ok "Model files look valid"
+    Write-Ok "Model files look valid (PINTO OpenCV-compatible sources configured)"
 }
 
 function Configure-ToolchainEnv {
@@ -123,6 +181,11 @@ function Configure-ToolchainEnv {
     $env:CGO_ENABLED = "1"
     $env:PKG_CONFIG = Join-Path $mingwBin "pkg-config.exe"
     $env:PKG_CONFIG_PATH = $pkgCfgDir
+
+    # Use pkg-config to provide exact OpenCV include/library flags for MSYS2 layout.
+    $env:CGO_CFLAGS = (& $env:PKG_CONFIG --cflags opencv4).Trim()
+    $env:CGO_LDFLAGS = (& $env:PKG_CONFIG --libs opencv4).Trim()
+    
     $env:Path = "$mingwBin;$env:Path"
 
     Write-Ok "Configured CGO/OpenCV toolchain environment"
@@ -141,11 +204,17 @@ function Verify-Toolchain {
     Write-Info "OpenCV (pkg-config opencv4):"
     & $env:PKG_CONFIG --modversion opencv4
     if ($LASTEXITCODE -ne 0) {
-        throw "OpenCV pkg-config metadata (opencv4) not found"
+        throw "OpenCV pkg-config metadata (opencv4) not found. Ensure mingw-w64-x86_64-opencv is installed."
+    }
+
+    # Verify the canonical OpenCV header path used by gocv.
+    $opencvHeader = "C:\msys64\mingw64\include\opencv4\opencv2\opencv.hpp"
+    if (-not (Test-Path $opencvHeader)) {
+        throw "OpenCV header not found at $opencvHeader. Reinstall mingw-w64-x86_64-opencv."
     }
 
     Write-Info "go env (CGO + compiler):"
-    go env CGO_ENABLED CC CXX
+    go env CGO_ENABLED CC CXX CGO_CFLAGS CGO_LDFLAGS
 
     Write-Ok "Toolchain verification succeeded"
 }
@@ -164,12 +233,35 @@ function Build-App {
     }
 
     Write-Info "Building native Windows EXE with biometric enabled..."
-    go build -mod=vendor -o $outExe .\ui
+    go build -tags customenv -mod=vendor -o $outExe .\ui
     if ($LASTEXITCODE -ne 0) {
         throw "go build failed"
     }
 
     Write-Ok "Build completed: $outExe"
+}
+
+function Copy-RuntimeDependencies {
+    $mingwBin = "C:\msys64\mingw64\bin"
+    $outDir = Join-Path $ProjectRoot "build\windows"
+
+    if (-not (Test-Path $mingwBin)) {
+        throw "MSYS2 MinGW bin directory not found: $mingwBin"
+    }
+
+    # Bundle MinGW runtime DLLs so the EXE can run outside shells that already have MSYS2 in PATH.
+    $files = Get-ChildItem -Path $mingwBin -Filter "*.dll" -ErrorAction SilentlyContinue
+    $copied = 0
+    foreach ($file in $files) {
+        Copy-Item -Path $file.FullName -Destination (Join-Path $outDir $file.Name) -Force
+        $copied++
+    }
+
+    if ($copied -eq 0) {
+        throw "No runtime DLLs were copied from $mingwBin"
+    }
+
+    Write-Ok "Copied runtime DLLs: $copied files"
 }
 
 function Write-RunLauncher {
@@ -212,6 +304,7 @@ try {
 
     Write-Step "Compiling PassQuantum"
     Build-App
+    Copy-RuntimeDependencies
     Write-RunLauncher
 
     Write-Step "Done"

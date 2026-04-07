@@ -14,19 +14,20 @@ const AppSecurityFormatVersion uint8 = 2
 
 // BiometricSettings controls face-recognition behaviour stored in the security profile.
 type BiometricSettings struct {
-	Enabled   bool    `json:"enabled"`
-	Threshold float32 `json:"threshold,omitempty"`
+	Enabled     bool    `json:"enabled"`
+	Threshold   float32 `json:"threshold,omitempty"`
+	CameraIndex *int    `json:"camera_index,omitempty"`
 }
 
 // AppSecurityProfile stores the app-level master password verifier and, optionally,
 // the enrolled biometric template.
 type AppSecurityProfile struct {
-	FormatVersion         uint8            `json:"format_version"`
-	PrivateKeyFingerprint []byte           `json:"private_key_fingerprint"`
-	KDFParams             KDFParams        `json:"kdf_params"`
-	Verifier              []byte           `json:"verifier"`
+	FormatVersion         uint8             `json:"format_version"`
+	PrivateKeyFingerprint []byte            `json:"private_key_fingerprint"`
+	KDFParams             KDFParams         `json:"kdf_params"`
+	Verifier              []byte            `json:"verifier"`
 	Biometric             BiometricSettings `json:"biometric,omitempty"`
-	BiometricTemplate     []byte           `json:"biometric_template,omitempty"`
+	BiometricTemplate     []byte            `json:"biometric_template,omitempty"`
 }
 
 // PrivateKeyFingerprint returns a stable fingerprint for the current private key.

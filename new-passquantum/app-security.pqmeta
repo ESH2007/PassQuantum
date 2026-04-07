@@ -1,0 +1,15 @@
+{
+  "format_version": 2,
+  "private_key_fingerprint": "+VgLx0GzOutRMFkmxmerwqgQ1+g0eK8O+PWEJLnlpzw=",
+  "kdf_params": {
+    "Salt": "JV3T+fkPtxSxHd4bHFaHFA==",
+    "Memory": 65536,
+    "Iterations": 1,
+    "Parallelism": 4
+  },
+  "verifier": "0/NsUeVB210h5qzsiHZEDVhmzJchdLKe4WebNw5ex6g=",
+  "biometric": {
+    "enabled": true,
+    "camera_index": 0
+  }
+}

@@ -12,11 +12,11 @@ import (
 	"gocv.io/x/gocv"
 )
 
-func startEnrollmentPreview(previewImg *canvas.Image, statusLabel *widget.Label) func() {
+func startEnrollmentPreview(appState *AppState, previewImg *canvas.Image, statusLabel *widget.Label) func() {
 	previewCtx, cancelPreview := context.WithCancel(context.Background())
 
 	go func() {
-		cam, _, err := openBiometricCamera()
+		cam, _, err := openBiometricCamera(appState)
 		if err != nil {
 			fyne.Do(func() { statusLabel.SetText("Camera unavailable.") })
 			return

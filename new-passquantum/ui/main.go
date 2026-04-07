@@ -34,10 +34,11 @@ type AppState struct {
 	startupWarning         string
 
 	// Biometric runtime state — populated from the security profile on each unlock.
-	biometricEnabled   bool
-	biometricTemplate  []float32 // cleared on lock; reloaded from profile on next unlock
-	biometricThreshold float32
-	biometricStopCheck func() // cancel function for the continuous check goroutine
+	biometricEnabled     bool
+	biometricTemplate    []float32 // cleared on lock; reloaded from profile on next unlock
+	biometricThreshold   float32
+	biometricCameraIndex *int
+	biometricStopCheck   func() // cancel function for the continuous check goroutine
 
 	// biometricRuntime is loaded once when biometric is first used and kept alive
 	// for the session to avoid repeated model-load overhead.
@@ -46,6 +47,7 @@ type AppState struct {
 
 func main() {
 	normalizeLocaleForFyne()
+	_ = os.Setenv("OPENCV_LOG_LEVEL", "ERROR")
 
 	myApp := app.New()
 	w := myApp.NewWindow("PassQuantum - Post-Quantum Safe Password Manager")

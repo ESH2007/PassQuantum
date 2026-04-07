@@ -44,6 +44,12 @@ func loadBiometricFromProfile(appState *AppState) {
 
 	appState.biometricEnabled = profile.Biometric.Enabled
 	appState.biometricThreshold = profile.Biometric.Threshold
+	if profile.Biometric.CameraIndex != nil {
+		v := *profile.Biometric.CameraIndex
+		appState.biometricCameraIndex = &v
+	} else {
+		appState.biometricCameraIndex = nil
+	}
 
 	if len(profile.BiometricTemplate) > 0 {
 		template, err := biometric.DeserializeFeatures(profile.BiometricTemplate)
@@ -66,6 +72,7 @@ func saveBiometricToProfile(appState *AppState) error {
 
 	profile.Biometric.Enabled = appState.biometricEnabled
 	profile.Biometric.Threshold = appState.biometricThreshold
+	profile.Biometric.CameraIndex = appState.biometricCameraIndex
 	if appState.biometricTemplate != nil {
 		profile.BiometricTemplate = biometric.SerializeFeatures(appState.biometricTemplate)
 	} else {
@@ -138,7 +145,7 @@ func captureAndVerifyFace(appState *AppState) (bool, error) {
 		return false, err
 	}
 
-	webcam, _, err := openBiometricCamera()
+	webcam, _, err := openBiometricCamera(appState)
 	if err != nil {
 		return false, fmt.Errorf("could not open camera: %w", err)
 	}
@@ -191,7 +198,7 @@ func captureEnrolmentFrame(appState *AppState) ([]float32, *image.NRGBA, error) 
 		return nil, nil, err
 	}
 
-	webcam, _, err := openBiometricCamera()
+	webcam, _, err := openBiometricCamera(appState)
 	if err != nil {
 		return nil, nil, fmt.Errorf("could not open camera: %w", err)
 	}
@@ -305,7 +312,7 @@ func stopContinuousCheck(appState *AppState) {
 // It opens a VideoCapture once, reads frames at ContinuousCheckIntervalMs,
 // and calls the lock flow after MaxConsecutiveFailures consecutive failures.
 func runContinuousCheck(ctx context.Context, appState *AppState, w fyne.Window, fyneApp fyne.App) {
-	webcam, _, err := openBiometricCamera()
+	webcam, _, err := openBiometricCamera(appState)
 	if err != nil {
 		// Camera unavailable — fail closed: lock immediately.
 		log.Printf("biometric: continuous check could not open camera: %v", err)
