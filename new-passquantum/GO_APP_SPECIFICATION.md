@@ -5,9 +5,9 @@ This document specifies how the Go implementation in `new-passquantum` works, in
 
 ## 2. System Summary
 PassQuantum is a desktop password manager built with Fyne UI and a modular core:
-- UI layer (`ui/`): windows, dialogs, navigation, password workflows, settings, biometric UX.
+- UI layer (`ui/`): windows, dialogs, navigation, password workflows, settings, advanced-auth UX.
 - Security core (`core/crypto/`): Argon2id KDF, AES-GCM encryption, HMAC integrity, Kyber768 KEM, app-security profile logic.
-- Biometric core (`core/biometric/`): face-landmark pipeline (GoCV backend), template extraction, similarity checks, model path resolution, fallback stubs.
+- advanced-auth core (`core/advanced-auth/`): face-landmark pipeline (GoCV backend), template extraction, similarity checks, model path resolution, fallback stubs.
 - Storage core (`core/storage/`): vault persistence and app security metadata persistence.
 - Data model (`core/model/`): password entry binary format.
 - CLI tools (`cmd/`, `.tmp_model_src/`): demos, diagnostics, and smoke tests.
@@ -22,12 +22,12 @@ PassQuantum is a desktop password manager built with Fyne UI and a modular core:
 5. User selects/creates vault, vault keys are derived per vault salt (`core/crypto/kdf.go`).
 6. Vault is opened/decrypted (`core/storage/storage.go` + `core/crypto/vault.go`).
 7. Password records are shown and managed via UI screens.
-8. If biometric is enabled and available, continuous checks can lock session on repeated failures.
+8. If advanced-auth is enabled and available, continuous checks can lock session on repeated failures.
 
 ### 3.2 Security Layers
 - App-level security profile (`app-security.pqmeta`):
   - Stores verifier derived from master password + private key fingerprint.
-  - Stores biometric settings/template (format version 2).
+  - Stores advanced-auth settings/template (format version 2).
 - Vault-level encryption (`*.pqdb`):
   - Argon2id-derived encryption and verification keys.
   - AES-256-GCM for ciphertext confidentiality/integrity at cipher level.
@@ -36,8 +36,8 @@ PassQuantum is a desktop password manager built with Fyne UI and a modular core:
   - Each password uses Kyber encapsulation + AES-GCM payload encryption.
 
 ### 3.3 Build-Tag Split
-- Biometric-enabled implementation: `//go:build !nobiometric && cgo`
-- Stub/no-biometric implementation: `//go:build nobiometric || !cgo`
+- advanced-auth-enabled implementation: `//go:build !nostubauth && cgo`
+- Stub/no-advanced-auth implementation: `//go:build nostubauth || !cgo`
 This allows the same UI and app logic to compile with or without GoCV/cgo.
 
 ## 4. Data Contracts
@@ -48,8 +48,8 @@ Defined in `core/crypto/app_security.go`:
 - `PrivateKeyFingerprint`
 - `KDFParams`
 - `Verifier`
-- `Biometric` (enabled flag, threshold, optional camera index)
-- `BiometricTemplate` (serialized feature vector)
+- `advanced-auth` (enabled flag, threshold, optional camera index)
+- `advanced-authTemplate` (serialized feature vector)
 
 ### 4.2 Vault File
 Defined in `core/crypto/vault.go`:
@@ -74,7 +74,7 @@ Defined in `core/model/password_entry.go` and parsed in `core/storage/storage.go
 - Key material (public/private key, session keys, current vault keys)
 - Unlock/session flags
 - Current vault metadata
-- Biometric runtime and template state
+- advanced-auth runtime and template state
 - Mutex protection (`sync.Mutex`) for sensitive mutable state
 
 `ui/access_control.go` provides:
@@ -90,14 +90,14 @@ Defined in `core/model/password_entry.go` and parsed in `core/storage/storage.go
 - Persist bytes to disk (`WriteVault`).
 - Read path performs reverse parse/decrypt/entry reconstruction (`ReadVault`).
 
-### 5.3 Biometric Flow
-- `core/biometric/common.go` provides feature extraction, cosine similarity, serialization helpers, thresholds.
-- `core/biometric/biometric.go` (cgo) runs model inference pipeline:
+### 5.3 advanced-auth Flow
+- `core/advanced-auth/common.go` provides feature extraction, cosine similarity, serialization helpers, thresholds.
+- `core/advanced-auth/advanced-auth.go` (cgo) runs model inference pipeline:
   - face detection/crop
   - face mesh landmark prediction
   - runtime checks and mesh drawing helpers
-- `ui/biometric_control.go` integrates capture, verify, enrolment, and continuous check loop.
-- Stub files return unavailable behavior when biometric backend is disabled.
+- `ui/advanced-auth_control.go` integrates capture, verify, enrolment, and continuous check loop.
+- Stub files return unavailable behavior when advanced-auth backend is disabled.
 
 ### 5.4 UI Flow
 Primary UI screens:
@@ -106,7 +106,7 @@ Primary UI screens:
 - Main shell/navigation: `ui/main_screen.go`
 - Password list/generator: `ui/passwords_view.go`
 - Password checker: `ui/password_checker.go`
-- Settings and biometric enrolment: `ui/settings_screen.go`
+- Settings and advanced-auth enrolment: `ui/settings_screen.go`
 Supporting visuals/components:
 - custom dialogs, themes, enhanced widgets, color picker.
 
@@ -129,45 +129,45 @@ Supporting visuals/components:
 - Role: model validation utility.
 
 ### 6.2 Command Programs (`cmd/`)
-4. `cmd/biometric-demo/main.go` (`!nobiometric && cgo`)
-- Purpose: interactive biometric camera demo with overlay and matching status.
+4. `cmd/advanced-auth-demo/main.go` (`!nostubauth && cgo`)
+- Purpose: interactive advanced-auth camera demo with overlay and matching status.
 - Key functions: `main`, `shouldQuit`, `cloneFeatures`, `openCamera`, `drawOverlay`.
-- Role: standalone biometric demonstration and tuning aid.
+- Role: standalone advanced-auth demonstration and tuning aid.
 
-5. `cmd/biometric-demo/main_nocgo.go` (`!nobiometric && !cgo`)
+5. `cmd/advanced-auth-demo/main_nocgo.go` (`!nostubauth && !cgo`)
 - Purpose: fallback entrypoint when cgo is unavailable.
 - Key function: `main`.
-- Role: clearly reports unsupported biometric demo in no-cgo context.
+- Role: clearly reports unsupported advanced-auth demo in no-cgo context.
 
 6. `cmd/test-vault/main.go`
 - Purpose: vault test runner utility.
 - Key function: `main`.
 - Role: manual validation of vault read/write flows.
 
-### 6.3 Biometric Core (`core/biometric/`)
-7. `core/biometric/common.go`
-- Purpose: backend-neutral biometric constants and math utilities.
+### 6.3 advanced-auth Core (`core/advanced-auth/`)
+7. `core/advanced-auth/common.go`
+- Purpose: backend-neutral advanced-auth constants and math utilities.
 - Key symbols: `Landmark`, `RuntimeHandle`, `NewDefaultRuntime`, `ExtractFeatures`, `CosineSimilarity`, `SerializeFeatures`, `DeserializeFeatures`, `EffectiveThreshold`.
 - Role: shared logic for both UI and backend pipeline.
 
-8. `core/biometric/biometric.go` (`!nobiometric && cgo`)
+8. `core/advanced-auth/advanced-auth.go` (`!nostubauth && cgo`)
 - Purpose: concrete GoCV/ONNX runtime implementation.
-- Key symbols: `FaceDetector`, `FaceMesh`, `Pipeline`, `NewFaceDetector`, `NewFaceMesh`, `NewPipeline`, `Run`, `RunFrame`, `BackendName`, `DrawMesh`.
-- Role: production biometric inference pipeline.
+- Key symbols: `FaceDetector`, `MeshModel`, `Pipeline`, `NewFaceDetector`, `NewMeshModel`, `NewPipeline`, `Run`, `RunFrame`, `BackendName`, `DrawMesh`.
+- Role: production advanced-auth inference pipeline.
 
-9. `core/biometric/biometric_stub.go` (`nobiometric || !cgo`)
-- Purpose: stub backend for builds without biometric backend support.
+9. `core/advanced-auth/advanced-auth_stub.go` (`nostubauth || !cgo`)
+- Purpose: stub backend for builds without advanced-auth backend support.
 - Key symbols mirror production API.
 - Role: compile-time compatibility and graceful feature disabling.
 
-10. `core/biometric/model_paths.go`
+10. `core/advanced-auth/model_paths.go`
 - Purpose: resolve model files from env/executable/repository candidates; validate model content.
 - Key functions: `ResolveDefaultModelPaths`, `resolveModelPath`, `candidateModelPaths`, `ValidateModelFile`.
 - Role: robust model discovery and corrupted-file rejection.
 
-11. `core/biometric/biometric_test.go`
+11. `core/advanced-auth/advanced-auth_test.go`
 - Purpose: test feature math, thresholds, serialization, path resolution, and validation logic.
-- Role: regression safety for biometric utility layer.
+- Role: regression safety for advanced-auth utility layer.
 
 ### 6.4 Crypto Core (`core/crypto/`)
 12. `core/crypto/kdf.go`
@@ -191,8 +191,8 @@ Supporting visuals/components:
 - Role: symmetric encryption primitive wrapper.
 
 16. `core/crypto/app_security.go`
-- Purpose: app-level profile creation/verification, key fingerprint binding, biometric metadata schema.
-- Key symbols: `AppSecurityFormatVersion`, `BiometricSettings`, `AppSecurityProfile`, `PrivateKeyFingerprint`, `CreateAppSecurityProfile`, `VerifyAppSecurityProfile`.
+- Purpose: app-level profile creation/verification, key fingerprint binding, advanced-auth metadata schema.
+- Key symbols: `AppSecurityFormatVersion`, `advanced-authSettings`, `AppSecurityProfile`, `PrivateKeyFingerprint`, `CreateAppSecurityProfile`, `VerifyAppSecurityProfile`.
 - Role: global app unlock gate.
 
 17. `core/crypto/app_security_test.go`
@@ -232,7 +232,7 @@ Supporting visuals/components:
 - Role: central security workflow coordinator.
 
 24. `ui/login_screen.go`
-- Purpose: setup/unlock screens and optional biometric gate before full access.
+- Purpose: setup/unlock screens and optional advanced-auth gate before full access.
 - Key functions: `PromptMasterPassword`, `showCreateMasterPasswordScreen`, `showUnlockScreen`, `showFaceVerificationGate`.
 - Role: user authentication UX.
 
@@ -257,8 +257,8 @@ Supporting visuals/components:
 - Role: security quality checking UX.
 
 29. `ui/settings_screen.go`
-- Purpose: settings sections (security, biometric, vault, display, about) and palette customization.
-- Key symbols: `SettingsSubview`, `ShowSettingsScreen`, `buildBiometricSettingsSection`, `showEnrolmentDialog`, `showChangeMasterPasswordDialog`.
+- Purpose: settings sections (security, advanced-auth, vault, display, about) and palette customization.
+- Key symbols: `SettingsSubview`, `ShowSettingsScreen`, `buildadvanced-authSettingsSection`, `showEnrolmentDialog`, `showChangeMasterPasswordDialog`.
 - Role: app configuration and advanced controls.
 
 30. `ui/helpers.go`
@@ -286,46 +286,47 @@ Supporting visuals/components:
 - Key symbols: `SVPicker`, `GradientSlider`, color conversion helpers.
 - Role: display theme personalization.
 
-35. `ui/biometric_camera_gocv.go` (`!nobiometric && cgo`)
+35. `ui/advanced-auth_camera_gocv.go` (`!nostubauth && cgo`)
 - Purpose: camera selection and frame availability checks.
-- Key symbols: `openBiometricCamera`, `candidateCameraIndices`, `cameraProducesFrames`.
-- Role: reliable camera source selection for biometric flows.
+- Key symbols: `openadvanced-authCamera`, `candidateCameraIndices`, `cameraProducesFrames`.
+- Role: reliable camera source selection for advanced-auth flows.
 
-36. `ui/camera_open.go` (`!nobiometric && cgo`)
+36. `ui/camera_source.go` (`!nostubauth && cgo`)
 - Purpose: Windows camera probing/opening helpers and warmup.
 - Key symbols: `OpenCameraWindowsByName`, `OpenCamera`, `GetCameraDevicePaths`, `OpenCameraWindows`, `warmupCamera`.
-- Role: low-level camera opening strategy for biometric runtime.
+- Role: low-level camera opening strategy for advanced-auth runtime.
 
-37. `ui/biometric_control.go` (`!nobiometric && cgo`)
-- Purpose: biometric profile load/save, capture and verify, background continuous checking, lock-on-fail handling.
-- Key symbols: `loadBiometricFromProfile`, `saveBiometricToProfile`, `ensureBiometricPipeline`, `captureAndVerifyFace`, `startContinuousCheck`, `runContinuousCheck`.
-- Role: live biometric security control plane.
+37. `ui/advanced-auth_control.go` (`!nostubauth && cgo`)
+- Purpose: advanced-auth profile load/save, capture and verify, background continuous checking, lock-on-fail handling.
+- Key symbols: `loadadvanced-authFromProfile`, `saveadvanced-authToProfile`, `ensureadvanced-authPipeline`, `captureAndVerifyFace`, `startContinuousCheck`, `runContinuousCheck`.
+- Role: live advanced-auth security control plane.
 
-38. `ui/biometric_preview_gocv.go` (`!nobiometric && cgo`)
+38. `ui/advanced-auth_preview_gocv.go` (`!nostubauth && cgo`)
 - Purpose: live enrolment preview stream for settings dialog.
 - Key function: `startEnrollmentPreview`.
 - Role: visual feedback during enrolment.
 
-39. `ui/biometric_control_stub.go` (`nobiometric || !cgo`)
-- Purpose: no-op/unsupported biometric behavior when backend unavailable.
+39. `ui/advanced-auth_control_stub.go` (`nostubauth || !cgo`)
+- Purpose: no-op/unsupported advanced-auth behavior when backend unavailable.
 - Role: keeps UI/security flow compile-safe without GoCV.
 
-40. `ui/biometric_preview_stub.go` (`nobiometric || !cgo`)
-- Purpose: preview stub for non-biometric builds.
+40. `ui/advanced-auth_preview_stub.go` (`nostubauth || !cgo`)
+- Purpose: preview stub for non-advanced-auth builds.
 - Role: interface compatibility.
 
 ## 7. Operational Notes
 - Sensitive byte slices are actively wiped in multiple paths (`crypto.WipeBytes`).
 - Vault and metadata updates during password change use temporary files and staged renames to reduce corruption risk.
 - File permissions are explicitly restrictive for secret-bearing files where applicable.
-- Biometric matching threshold defaults to `0.97` if no stored threshold is set.
+- advanced-auth matching threshold defaults to `0.97` if no stored threshold is set.
 
 ## 8. Known Separation for Future C Port
 The Go codebase maps cleanly to C modules:
 - `crypto` -> `src/crypto`
 - `storage` -> `src/storage`
 - `model` -> `src/model`
-- `biometric` -> `src/biometric`
+- `advanced-auth` -> `src/advanced-auth`
 - `ui` -> `src/ui`
 - `cmd tools` -> `apps/`
 This mapping is used to initialize `ZimPass (PassQuantum_C)`.
+

@@ -100,7 +100,6 @@ func unlockAppSession(appState *AppState, masterPassword string) error {
 	}
 
 	appState.storeUnlockedSession(masterPassword, profile, sessionEncryptionKey, sessionVerificationKey)
-	loadBiometricFromProfile(appState)
 	return nil
 }
 
@@ -373,14 +372,6 @@ func (appState *AppState) clearSensitiveState() {
 	appState.isUnlocked = false
 	appState.securityProfile = nil
 	appState.startupWarning = ""
-
-	// Stop the continuous face-check goroutine and clear the in-memory template.
-	// The pipeline (ONNX models) is kept alive to avoid reload overhead on the next unlock.
-	if appState.biometricStopCheck != nil {
-		appState.biometricStopCheck()
-		appState.biometricStopCheck = nil
-	}
-	appState.biometricTemplate = nil
 }
 
 func showWindowError(window any, err error) {

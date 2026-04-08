@@ -11,7 +11,6 @@ import (
 	"fyne.io/fyne/v2/app"
 	"github.com/cloudflare/circl/kem/kyber/kyber768"
 
-	"passquantum/core/biometric"
 	"passquantum/core/crypto"
 )
 
@@ -34,17 +33,6 @@ type AppState struct {
 	isUnlocked             bool
 	currentVault           string
 	startupWarning         string
-
-	// Biometric runtime state — populated from the security profile on each unlock.
-	biometricEnabled     bool
-	biometricTemplate    []float32 // cleared on lock; reloaded from profile on next unlock
-	biometricThreshold   float32
-	biometricCameraIndex *int
-	biometricStopCheck   func() // cancel function for the continuous check goroutine
-
-	// biometricRuntime is loaded once when biometric is first used and kept alive
-	// for the session to avoid repeated model-load overhead.
-	biometricRuntime biometric.RuntimeHandle
 }
 
 func main() {

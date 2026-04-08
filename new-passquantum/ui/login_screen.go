@@ -89,21 +89,6 @@ func showUnlockScreen(w fyne.Window, fyneApp fyne.App, appState *AppState) {
 		if !UnlockVault(w, appState, passwordInput.Text) {
 			return
 		}
-
-		// When biometric is enabled and an enrolled template exists, verify the
-		// user's face before granting access to the vault selection screen.
-		appState.mu.Lock()
-		biometricEnabled := appState.biometricEnabled
-		hasTemplate := len(appState.biometricTemplate) > 0
-		appState.mu.Unlock()
-
-		if biometricEnabled && hasTemplate {
-			showFaceVerificationGate(w, fyneApp, appState)
-			return
-		}
-
-		// No biometric required — proceed directly.
-		startContinuousCheck(appState, w, fyneApp)
 		ShowVaultSelection(w, fyneApp, appState)
 	}, 280, 50)
 
@@ -170,50 +155,4 @@ func buildAccessScreen(title string, subtitle string, warning string, fields []f
 
 	card := CreateEnhancedCard(container.NewVBox(cardObjects...), 560, 0)
 	return CreateBackgroundContainer(container.NewCenter(card))
-}
-
-// showFaceVerificationGate displays a brief "Scanning face…" screen and runs the
-// one-shot biometric check. On success it starts continuous verification and
-// navigates to vault selection. On failure it shows an error and resets to the
-// unlock screen so the user can try again.
-func showFaceVerificationGate(w fyne.Window, fyneApp fyne.App, appState *AppState) {
-	statusLabel := CreateLabel("SCANNING FACE...", 14, ColorAccentCyan, true)
-	subLabel := CreateLabel("Please look at the camera.", 11, ColorTextSec, false)
-
-	screen := buildAccessScreen(
-		"FACE VERIFICATION",
-		"Verifying identity using the enrolled face template.",
-		"",
-		[]fyne.CanvasObject{
-			widget.NewLabel(""),
-			container.NewCenter(statusLabel),
-			container.NewCenter(subLabel),
-			widget.NewLabel(""),
-		},
-	)
-	w.SetContent(screen)
-	w.Resize(fyne.NewSize(800, 600))
-
-	// Run face verification off the UI goroutine to avoid blocking Fyne.
-	go func() {
-		matched, err := captureAndVerifyFace(appState)
-		fyne.Do(func() {
-			if err != nil {
-				appState.clearSensitiveState()
-				ShowAppError(fmt.Errorf("face verification error: %w", err), w)
-				showUnlockScreen(w, fyneApp, appState)
-				return
-			}
-			if !matched {
-				appState.clearSensitiveState()
-				ShowAppWarning("Face Not Recognised",
-					"The captured face does not match the enrolled template. Please unlock again.", w)
-				showUnlockScreen(w, fyneApp, appState)
-				return
-			}
-			// Face verified — begin continuous check and proceed.
-			startContinuousCheck(appState, w, fyneApp)
-			ShowVaultSelection(w, fyneApp, appState)
-		})
-	}()
 }

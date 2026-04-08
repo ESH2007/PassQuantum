@@ -1,27 +1,5 @@
 # PassQuantum Build Makefile
 # Easy cross-platform compilation for Linux, Windows, and macOS
-#
-# ─────────────────────────────────────────────────────────────────────────────
-# BIOMETRIC FEATURE PREREQUISITES
-# ─────────────────────────────────────────────────────────────────────────────
-# PassQuantum includes 3D Face Mesh recognition via GoCV (OpenCV DNN + ONNX).
-# Building requires OpenCV 4.x development libraries on the HOST machine:
-#
-#   Ubuntu / Debian:  sudo apt-get install libopencv-dev pkg-config
-#   Fedora / RHEL:    sudo dnf install opencv-devel pkgconf
-#   macOS (Homebrew): brew install opencv pkg-config
-#   Windows:          Install OpenCV 4 and set PKG_CONFIG_PATH appropriately.
-#
-# ONNX model files must be placed in the models/ directory before runtime:
-#   models/blazeface.onnx   — BlazeFace short-range face detector
-#   models/face_mesh.onnx   — MediaPipe Face Mesh (468 3D landmarks)
-#
-# Cross-compilation with fyne-cross:
-#   fyne-cross containers do NOT include OpenCV. For cross-compiled biometric
-#   builds you must supply a custom Docker image with the target platform's
-#   OpenCV 4 shared libraries. Native builds (build-simple / build-native.sh)
-#   work as long as OpenCV is installed on the local machine.
-# ─────────────────────────────────────────────────────────────────────────────
 
 .PHONY: all clean build-linux build-windows build-mac build-all install-deps help
 

@@ -278,6 +278,7 @@ This implementation is suitable for open-source distribution because:
 - [ ] Password expiration policies
 - [ ] Multi-device sync (encrypted)
 - [ ] Hardware security module (HSM) support
-- [ ] Biometric unlock (using derived key, not password)
+- [ ] advanced-auth unlock (using derived key, not password)
 - [ ] 2FA for vault creation
 - [ ] Secure password sharing (encrypted invite)
+

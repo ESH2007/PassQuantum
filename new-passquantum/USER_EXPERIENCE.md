@@ -411,7 +411,7 @@ Access settings by clicking "⚙ Settings" from **Vault Selection**.
 
 **Two-Factor Authentication** (Coming Soon):
 - Enable additional security layer
-- Will support TOTP and biometric authentication
+- Will support TOTP and advanced-auth authentication
 
 ### Vault Tab 📦
 
@@ -860,3 +860,4 @@ When reporting a bug, please include:
 ---
 
 **PassQuantum** - Your passwords, quantum-safe and secure. 🔐✨
+

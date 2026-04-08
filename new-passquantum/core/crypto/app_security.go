@@ -8,26 +8,14 @@ import (
 )
 
 // AppSecurityFormatVersion is the current on-disk profile version.
-// Version 1: master-password verifier only.
-// Version 2: adds BiometricSettings and BiometricTemplate.
-const AppSecurityFormatVersion uint8 = 2
+const AppSecurityFormatVersion uint8 = 1
 
-// BiometricSettings controls face-recognition behaviour stored in the security profile.
-type BiometricSettings struct {
-	Enabled     bool    `json:"enabled"`
-	Threshold   float32 `json:"threshold,omitempty"`
-	CameraIndex *int    `json:"camera_index,omitempty"`
-}
-
-// AppSecurityProfile stores the app-level master password verifier and, optionally,
-// the enrolled biometric template.
+// AppSecurityProfile stores the app-level master password verifier.
 type AppSecurityProfile struct {
 	FormatVersion         uint8             `json:"format_version"`
 	PrivateKeyFingerprint []byte            `json:"private_key_fingerprint"`
 	KDFParams             KDFParams         `json:"kdf_params"`
 	Verifier              []byte            `json:"verifier"`
-	Biometric             BiometricSettings `json:"biometric,omitempty"`
-	BiometricTemplate     []byte            `json:"biometric_template,omitempty"`
 }
 
 // PrivateKeyFingerprint returns a stable fingerprint for the current private key.

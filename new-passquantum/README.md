@@ -223,7 +223,7 @@ This creates a native executable for your current platform.
 Run a live demo of the same face-recognition pipeline used by the app:
 
 ```bash
-go run ./cmd/biometric-demo -camera 0 -threshold 0.97
+go run ./cmd/advanced-auth-demo -camera 0 -threshold 0.97
 ```
 
 Demo controls:
@@ -232,8 +232,8 @@ Demo controls:
 - `Q` or `Esc`: Quit demo
 
 Notes:
-- Uses the same BlazeFace + Face Mesh + feature extraction + cosine similarity flow as the main app.
-- Requires `models/blazeface.onnx` and `models/face_mesh.onnx`.
+- Uses the same face_model + Face Mesh + feature extraction + cosine similarity flow as the main app.
+- Requires `models/face_model.onnx` and `models/mesh_model.onnx`.
 
 # Build for macOS
 ./build.sh mac
@@ -394,7 +394,7 @@ go build -o passquantum ./ui
 - [ ] Password strength meter and generator
 - [ ] Master password change functionality
 - [ ] Two-factor authentication (2FA) support
-- [ ] Biometric unlock (Touch ID, Windows Hello)
+- [ ] advanced-auth unlock (Touch ID, Windows Hello)
 - [ ] Encrypted cloud backup integration
 - [ ] Password breach database checking
 - [ ] Import/export from other password managers
@@ -451,3 +451,4 @@ This software is provided "as is" without warranty of any kind. While PassQuantu
 ---
 
 **PassQuantum** - Your passwords, quantum-safe. 🔐✨
+
