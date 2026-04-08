@@ -1,0 +1,8 @@
+Package: openblas
+Version: 0.3.29
+Depends: vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-linux
+Multi-Arch: same
+Abi: 0383ae9cf9764fbbfa457adfc81991b72f1efe1572843365475bbdc301d45094
+Description: OpenBLAS is an optimized BLAS library based on GotoBLAS2 1.13 BSD version.
+Status: purge ok not-installed

@@ -1,0 +1,38 @@
+{
+  "/home/linuxbrew/.linuxbrew/bin/g++-15" : 
+  {
+    "hash" : "c9f9bc17e24f59dc8d60efa1c7f0893eaf0e9aea",
+    "size" : 2140400,
+    "timestamp" : 1773404932
+  },
+  "/home/linuxbrew/.linuxbrew/bin/gcc-15" : 
+  {
+    "hash" : "6ca607e997d0a59e31579d008cb8561f27f9aa24",
+    "size" : 2140400,
+    "timestamp" : 1773404932
+  },
+  "/usr/bin/c++" : 
+  {
+    "hash" : "683eba44ac1c0233dfaeb0128ef04cca0cf5764e",
+    "size" : 1027128,
+    "timestamp" : 1766091591
+  },
+  "/usr/bin/cc" : 
+  {
+    "hash" : "9b512455dfa5d38a8af495ae8357c79c990086b7",
+    "size" : 1023032,
+    "timestamp" : 1766091591
+  },
+  "/usr/bin/g++" : 
+  {
+    "hash" : "683eba44ac1c0233dfaeb0128ef04cca0cf5764e",
+    "size" : 1027128,
+    "timestamp" : 1766091591
+  },
+  "/usr/bin/gcc" : 
+  {
+    "hash" : "9b512455dfa5d38a8af495ae8357c79c990086b7",
+    "size" : 1023032,
+    "timestamp" : 1766091591
+  }
+}

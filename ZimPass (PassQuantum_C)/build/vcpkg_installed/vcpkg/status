@@ -1,0 +1,87 @@
+Package: vcpkg-cmake-config
+Version: 2024-05-23
+Architecture: x64-linux
+Multi-Arch: same
+Abi: 938b5e1dc7ceacf08654bef246055524d658786b56f39c96f3b23d2de8d063d3
+Status: install ok installed
+
+Package: vcpkg-cmake
+Version: 2024-04-23
+Architecture: x64-linux
+Multi-Arch: same
+Abi: f7cbaf4a1eecbbb1579be1e8dbbd016626910498335b8370236a4219615937b6
+Status: install ok installed
+
+Package: sqlite3
+Version: 3.52.0
+Depends: vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-linux
+Multi-Arch: same
+Abi: 5b5cda9131dd97874d69e814514845c36f03d8dc5bf29b944c6f72e8f0d12617
+Description: SQLite is a software library that implements a self-contained, serverless, zero-configuration, transactional SQL database engine.
+Default-Features: json1
+Status: purge ok not-installed
+
+Package: sqlite3
+Feature: json1
+Architecture: x64-linux
+Multi-Arch: same
+Description: Enable JSON functionality for sqlite3
+Status: purge ok not-installed
+
+Package: fftw3
+Version: 3.3.10
+Port-Version: 10
+Depends: vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-linux
+Multi-Arch: same
+Abi: 4ba742e6633ff0e3ed1340c73f701b2efb626ea1de65a8eee8133abc2c87e1bf
+Description: FFTW is a C subroutine library for computing the discrete Fourier transform (DFT) in one or more dimensions, of arbitrary input size, and of both real and complex data (as well as of even/odd data, i.e. the discrete cosine/sine transforms or DCT/DST).
+Status: purge ok not-installed
+
+Package: zlib
+Version: 1.3.1
+Depends: vcpkg-cmake
+Architecture: x64-linux
+Multi-Arch: same
+Abi: 9108104ef4a02f3fbd786121dd6f8a2e8972f736c1e4c47c93a27c328e09356d
+Description: A compression library
+Status: install ok installed
+
+Package: libpng
+Version: 1.6.56
+Depends: vcpkg-cmake, vcpkg-cmake-config, zlib
+Architecture: x64-linux
+Multi-Arch: same
+Abi: bc2a329c01985bda09a1aec8694562f2d61d8e570c735e102338d947a839e4d1
+Description: libpng is a library implementing an interface for reading and writing PNG (Portable Network Graphics) format files
+Status: install ok installed
+
+Package: libjpeg-turbo
+Version: 3.1.4.1
+Depends: vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-linux
+Multi-Arch: same
+Abi: 815c382d771e026b430991eea618c3be0a981e2c4a846e7a28bca2f54da99669
+Description: libjpeg-turbo is a JPEG image codec that uses SIMD instructions (MMX, SSE2, NEON, AltiVec) to accelerate baseline JPEG compression and decompression on x86, x86-64, ARM, and PowerPC systems.
+Status: install ok installed
+
+Package: openblas
+Version: 0.3.29
+Depends: vcpkg-cmake, vcpkg-cmake-config
+Architecture: x64-linux
+Multi-Arch: same
+Abi: 0383ae9cf9764fbbfa457adfc81991b72f1efe1572843365475bbdc301d45094
+Description: OpenBLAS is an optimized BLAS library based on GotoBLAS2 1.13 BSD version.
+Status: install ok installed
+
+Package: blas
+Version: 2023-04-14
+Port-Version: 5
+Depends: openblas, vcpkg-cmake
+Architecture: x64-linux
+Multi-Arch: same
+Abi: 69aa5c5ebfeb532fa580eaf9b15afe233418ed8b9f88af7e0190efd6328d1104
+Description: Metapackage for packages which provide BLAS
+Status: install ok installed
+
