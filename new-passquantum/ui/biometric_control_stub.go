@@ -1,4 +1,4 @@
-//go:build nobiometric
+//go:build nobiometric || !cgo
 
 package main
 

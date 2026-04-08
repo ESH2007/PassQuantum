@@ -102,7 +102,64 @@ function Test-ModelFile([string]$modelPath) {
         return "git-lfs"
     }
 
+    $fileName = [System.IO.Path]::GetFileName($modelPath).ToLowerInvariant()
+    if ($fileName -eq "face_mesh.onnx") {
+        $blob = [System.Text.Encoding]::ASCII.GetString($bytes)
+        if ($blob.Contains("Split")) {
+            return "windows-opencv-split-incompatible"
+        }
+    }
+
     return "ok"
+}
+
+function Ensure-GoWinRes {
+    $cmd = Get-Command "go-winres" -ErrorAction SilentlyContinue
+    if ($cmd) {
+        return $cmd.Source
+    }
+
+    if ($SkipInstalls) {
+        throw "go-winres is required to embed Icon.png into PassQuantum.exe and -SkipInstalls was passed"
+    }
+
+    Write-Info "Installing go-winres for EXE icon embedding..."
+    go install github.com/tc-hib/go-winres@latest
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to install go-winres"
+    }
+
+    $goBin = Join-Path (go env GOPATH) "bin"
+    $exe = Join-Path $goBin "go-winres.exe"
+    if (Test-Path $exe) {
+        return $exe
+    }
+
+    throw "go-winres executable not found after installation"
+}
+
+function Prepare-IconResources {
+    $iconPath = Join-Path $ProjectRoot "Icon.png"
+    if (-not (Test-Path $iconPath)) {
+        throw "Icon file not found: $iconPath"
+    }
+
+    $goWinResExe = Ensure-GoWinRes
+    $uiDir = Join-Path $ProjectRoot "ui"
+
+    Push-Location $uiDir
+    try {
+        Write-Info "Generating Windows resource object from Icon.png..."
+        & $goWinResExe simply --manifest gui --arch amd64 --out "zz_passquantum_icon" --icon "$iconPath"
+        if ($LASTEXITCODE -ne 0) {
+            throw "go-winres failed to generate .syso resources"
+        }
+    }
+    finally {
+        Pop-Location
+    }
+
+    Write-Ok "Prepared EXE icon resources from Icon.png"
 }
 
 function Download-Model([string]$url, [string]$destination) {
@@ -264,6 +321,16 @@ function Copy-RuntimeDependencies {
     Write-Ok "Copied runtime DLLs: $copied files"
 }
 
+function Copy-IconArtifact {
+    $iconPath = Join-Path $ProjectRoot "Icon.png"
+    $outDir = Join-Path $ProjectRoot "build\windows"
+    if (-not (Test-Path $iconPath)) {
+        throw "Icon file not found: $iconPath"
+    }
+    Copy-Item -Path $iconPath -Destination (Join-Path $outDir "Icon.png") -Force
+    Write-Ok "Copied Icon.png to build output"
+}
+
 function Write-RunLauncher {
     $launcher = Join-Path $ProjectRoot "build\windows\run-passquantum.cmd"
     $content = @"
@@ -302,9 +369,13 @@ try {
     Configure-ToolchainEnv
     Verify-Toolchain
 
+    Write-Step "Preparing EXE icon resources"
+    Prepare-IconResources
+
     Write-Step "Compiling PassQuantum"
     Build-App
     Copy-RuntimeDependencies
+    Copy-IconArtifact
     Write-RunLauncher
 
     Write-Step "Done"

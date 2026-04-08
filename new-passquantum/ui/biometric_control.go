@@ -1,4 +1,4 @@
-//go:build !nobiometric
+//go:build !nobiometric && cgo
 
 package main
 
@@ -239,12 +239,9 @@ func captureEnrolmentFrame(appState *AppState) ([]float32, *image.NRGBA, error) 
 	}
 
 	// Draw the mesh overlay on a preview image for the UI.
-	rgb := gocv.NewMat()
-	defer rgb.Close()
-	gocv.CvtColor(frame, &rgb, gocv.ColorBGRToRGB)
-	biometric.DrawMesh(&rgb, landmarks)
+	biometric.DrawMesh(&frame, landmarks)
 
-	preview, err := rgb.ToImage()
+	preview, err := frame.ToImage()
 	if err != nil {
 		// Non-fatal: return features without a preview image.
 		return features, nil, nil

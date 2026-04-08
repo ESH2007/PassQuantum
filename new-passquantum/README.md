@@ -218,6 +218,23 @@ This creates a native executable for your current platform.
 # Build for Windows
 ./build.sh windows
 
+### Face Recognition Demo (Standalone)
+
+Run a live demo of the same face-recognition pipeline used by the app:
+
+```bash
+go run ./cmd/biometric-demo -camera 0 -threshold 0.97
+```
+
+Demo controls:
+- `E`: Enroll current detected face as reference template
+- `C`: Clear enrolled template
+- `Q` or `Esc`: Quit demo
+
+Notes:
+- Uses the same BlazeFace + Face Mesh + feature extraction + cosine similarity flow as the main app.
+- Requires `models/blazeface.onnx` and `models/face_mesh.onnx`.
+
 # Build for macOS
 ./build.sh mac
 

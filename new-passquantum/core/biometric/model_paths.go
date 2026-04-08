@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -132,6 +133,16 @@ func ValidateModelFile(path string) error {
 	}
 	if bytes.HasPrefix(lower, []byte("<!doctype html")) || bytes.HasPrefix(lower, []byte("<html")) {
 		return fmt.Errorf("html content detected instead of ONNX binary")
+	}
+
+	if runtime.GOOS == "windows" && strings.EqualFold(filepath.Base(path), "face_mesh.onnx") {
+		data, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return fmt.Errorf("failed to read model for Windows compatibility check: %w", readErr)
+		}
+		if bytes.Contains(data, []byte("Split")) {
+			return fmt.Errorf("Windows/OpenCV-incompatible Face Mesh model detected (Split-node graph). Use PINTO-compatible face_mesh.onnx and blazeface.onnx models")
+		}
 	}
 
 	return nil

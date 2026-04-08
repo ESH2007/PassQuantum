@@ -3,9 +3,11 @@ package main
 import (
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"github.com/cloudflare/circl/kem/kyber/kyber768"
 
@@ -50,6 +52,7 @@ func main() {
 	_ = os.Setenv("OPENCV_LOG_LEVEL", "ERROR")
 
 	myApp := app.New()
+	setApplicationIcon(myApp)
 	w := myApp.NewWindow("PassQuantum - Post-Quantum Safe Password Manager")
 	w.SetTitle("PassQuantum - Post-Quantum Safe Password Manager")
 	// w.Resize(fyne.NewSize(500, 350))
@@ -78,6 +81,24 @@ func normalizeLocaleForFyne() {
 	fix("LANGUAGE")
 	fix("LC_MESSAGES")
 	fix("LC_CTYPE")
+}
+
+func setApplicationIcon(myApp fyne.App) {
+	iconCandidates := []string{
+		"Icon.png",
+		filepath.Join("..", "Icon.png"),
+		filepath.Join("new-passquantum", "Icon.png"),
+		filepath.Join("build", "windows", "Icon.png"),
+	}
+
+	for _, iconPath := range iconCandidates {
+		data, err := os.ReadFile(iconPath)
+		if err != nil || len(data) == 0 {
+			continue
+		}
+		myApp.SetIcon(fyne.NewStaticResource("Icon.png", data))
+		return
+	}
 }
 
 func initializeApp() *AppState {

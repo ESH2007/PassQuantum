@@ -1,4 +1,4 @@
-//go:build !nobiometric
+//go:build !nobiometric && cgo
 
 // Package biometric provides 3D face mesh recognition using MediaPipe Face Mesh
 // (via ONNX + GoCV) for continuous identity verification inside PassQuantum.
@@ -125,7 +125,7 @@ func validateFaceMeshOpenCVCompatibility(modelPath string) (string, error) {
 	// Windows builds instead of returning a regular Go error.
 	if bytes.Contains(data, []byte("Split")) {
 		return opsetLabel, fmt.Errorf(
-			"Face Mesh model %q is incompatible with OpenCV %s on Windows (Split-node ONNX parser issue that can crash the process). Replace models with PINTO OpenCV-compatible exports: face_mesh.onnx=%s blazeface.onnx=%s",
+			"Face Mesh model %q is incompatible with OpenCV %s on Windows (Split-node ONNX parser issue that can crash the process). Replace models with PINTO OpenCV-compatible exports and rebuild using build-windows-native-biometric.ps1. face_mesh.onnx=%s blazeface.onnx=%s",
 			modelPath,
 			opencvVersion,
 			"https://github.com/PINTO0309/PINTO_model_zoo/raw/main/032_FaceMesh/01_float32/face_mesh.onnx",

@@ -1,4 +1,4 @@
-//go:build !nobiometric
+//go:build !nobiometric && cgo
 
 package main
 
@@ -36,10 +36,7 @@ func startEnrollmentPreview(appState *AppState, previewImg *canvas.Image, status
 				if !cam.Read(&frame) || frame.Empty() {
 					continue
 				}
-				rgb := gocv.NewMat()
-				gocv.CvtColor(frame, &rgb, gocv.ColorBGRToRGB)
-				goImg, convErr := rgb.ToImage()
-				rgb.Close()
+				goImg, convErr := frame.ToImage()
 				if convErr != nil {
 					continue
 				}
