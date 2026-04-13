@@ -58,8 +58,8 @@ Defined in `core/crypto/vault.go`:
 - HMAC
 - Encrypted data (nonce + ciphertext)
 
-### 4.3 Password Entry
-Defined in `core/model/password_entry.go` and parsed in `core/storage/storage.go`:
+### 4.3 Vault Entry
+Defined in `core/model/vault_entry.go` and parsed in `core/storage/storage.go`:
 - ID
 - Service
 - Username
@@ -200,9 +200,9 @@ Supporting visuals/components:
 - Role: validation of app-level security logic.
 
 ### 6.5 Model (`core/model/`)
-18. `core/model/password_entry.go`
-- Purpose: password entry in-memory model and binary serialization.
-- Key symbols: `PasswordEntry`, `NewPasswordEntry`, `Serialize`, `Deserialize`.
+18. `core/model/vault_entry.go`
+- Purpose: vault entry in-memory model and binary serialization for password, note, and card items.
+- Key symbols: `VaultEntry`, `NewVaultEntry`, `Serialize`, `Deserialize`, `SerializeV2`, `DeserializeV2`.
 - Role: atomic record unit stored inside vault plaintext before vault encryption.
 
 ### 6.6 Storage (`core/storage/`)

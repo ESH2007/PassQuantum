@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"fyne.io/fyne/v2"
@@ -147,8 +148,20 @@ func (ns *NavigationState) updateContent() {
 
 // createPasswordsView creates the add password form view
 func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
+	type cardPayload struct {
+		Subtype string `json:"subtype"`
+		Holder  string `json:"holder"`
+		Number  string `json:"number"`
+		Expiry  string `json:"expiry"`
+		CVV     string `json:"cvv"`
+	}
+
 	passwordInput := widget.NewPasswordEntry()
 	passwordInput.PlaceHolder = "Enter password"
+	passwordStrengthBar := NewStrengthBar()
+	BindStrengthBar(passwordStrengthBar, passwordInput, func() []string {
+		return storedVaultPasswords(ns.appState)
+	})
 
 	serviceInput := widget.NewEntry()
 	serviceInput.PlaceHolder = "Service name (e.g., Gmail, GitHub)"
@@ -156,19 +169,154 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 	usernameInput := widget.NewEntry()
 	usernameInput.PlaceHolder = "Username or email"
 
-	addBtn := CreateNeonButton("➕ SAVE PASSWORD", func() {
+	noteTitleInput := widget.NewEntry()
+	noteTitleInput.PlaceHolder = "Note title"
+	noteContentInput := widget.NewMultiLineEntry()
+	noteContentInput.SetMinRowsVisible(5)
+	noteContentInput.PlaceHolder = "Write your cyphered note here"
+
+	cardTypeSelect := widget.NewSelect([]string{"Credit", "Debit"}, nil)
+	cardTypeSelect.SetSelected("Credit")
+	cardNameInput := widget.NewEntry()
+	cardNameInput.PlaceHolder = "Card nickname"
+	cardHolderInput := widget.NewEntry()
+	cardHolderInput.PlaceHolder = "Card holder"
+	cardNumberInput := widget.NewEntry()
+	cardNumberInput.PlaceHolder = "Card number"
+	cardExpiryInput := widget.NewEntry()
+	cardExpiryInput.PlaceHolder = "MM/YY"
+	cardCVVInput := widget.NewPasswordEntry()
+	cardCVVInput.PlaceHolder = "CVV"
+
+	itemTypeSelect := widget.NewSelect([]string{"Password", "Cyphered Note", "Card"}, nil)
+	itemTypeSelect.SetSelected("Password")
+
+	styledWideField := func(input *widget.Entry) fyne.CanvasObject {
+		return container.NewCenter(CreateStyledInput(input, 650, 42))
+	}
+
+	styledWideSelect := func(selectWidget *widget.Select) fyne.CanvasObject {
+		bg := canvas.NewRectangle(ColorInputBg)
+		bg.CornerRadius = BorderRadius
+		bg.SetMinSize(fyne.NewSize(650, 42))
+		return container.NewCenter(container.NewMax(bg, container.NewPadded(selectWidget)))
+	}
+
+	passwordSection := container.NewVBox(
+		CreateLabel("SERVICE NAME", 11, ColorPurple, true),
+		styledWideField(serviceInput),
+		widget.NewLabel(""),
+		CreateLabel("USERNAME / EMAIL", 11, ColorPurple, true),
+		styledWideField(usernameInput),
+		widget.NewLabel(""),
+		CreateLabel("PASSWORD", 11, ColorPurple, true),
+		styledWideField(passwordInput),
+		widget.NewLabel(""),
+		passwordStrengthBar,
+	)
+
+	noteSection := container.NewVBox(
+		CreateLabel("NOTE TITLE", 11, ColorPurple, true),
+		styledWideField(noteTitleInput),
+		widget.NewLabel(""),
+		CreateLabel("CYPHERED NOTE", 11, ColorPurple, true),
+		container.NewCenter(CreateStyledInput(noteContentInput, 650, 170)),
+	)
+
+	cardSection := container.NewVBox(
+		CreateLabel("CARD TYPE", 11, ColorPurple, true),
+		styledWideSelect(cardTypeSelect),
+		widget.NewLabel(""),
+		CreateLabel("CARD NICKNAME", 11, ColorPurple, true),
+		styledWideField(cardNameInput),
+		widget.NewLabel(""),
+		CreateLabel("CARD HOLDER", 11, ColorPurple, true),
+		styledWideField(cardHolderInput),
+		widget.NewLabel(""),
+		CreateLabel("CARD NUMBER", 11, ColorPurple, true),
+		styledWideField(cardNumberInput),
+		widget.NewLabel(""),
+		container.NewGridWithColumns(2,
+			container.NewVBox(
+				CreateLabel("EXPIRY", 11, ColorPurple, true),
+				container.NewCenter(CreateStyledInput(cardExpiryInput, 300, 42)),
+			),
+			container.NewVBox(
+				CreateLabel("CVV", 11, ColorPurple, true),
+				container.NewCenter(CreateStyledInput(cardCVVInput, 300, 42)),
+			),
+		),
+	)
+
+	refreshSections := func(selected string) {
+		passwordSection.Hide()
+		noteSection.Hide()
+		cardSection.Hide()
+
+		switch selected {
+		case "Cyphered Note":
+			noteSection.Show()
+		case "Card":
+			cardSection.Show()
+		default:
+			passwordSection.Show()
+		}
+	}
+	itemTypeSelect.OnChanged = refreshSections
+	refreshSections(itemTypeSelect.Selected)
+
+	addBtn := CreateNeonButton("➕ SAVE ITEM", func() {
+		itemType := itemTypeSelect.Selected
 		service := serviceInput.Text
 		username := usernameInput.Text
-		password := passwordInput.Text
+		secret := passwordInput.Text
+		entryType := model.EntryTypePassword
+		cardSubtype := ""
 
-		if password == "" {
-			ShowAppError(fmt.Errorf("password cannot be empty"), ns.window)
-			return
-		}
-
-		if service == "" {
-			ShowAppError(fmt.Errorf("service name cannot be empty"), ns.window)
-			return
+		switch itemType {
+		case "Cyphered Note":
+			entryType = model.EntryTypeNote
+			title := noteTitleInput.Text
+			content := noteContentInput.Text
+			if title == "" || content == "" {
+				ShowAppError(fmt.Errorf("note title and content cannot be empty"), ns.window)
+				return
+			}
+			notePayload, _ := json.Marshal(map[string]string{
+				"type":    "note",
+				"title":   title,
+				"content": content,
+			})
+			service = "NOTE:" + title
+			username = "note"
+			secret = string(notePayload)
+		case "Card":
+			entryType = model.EntryTypeCard
+			cardSubtype = cardTypeSelect.Selected
+			if cardNameInput.Text == "" || cardHolderInput.Text == "" || cardNumberInput.Text == "" {
+				ShowAppError(fmt.Errorf("card name, holder and number cannot be empty"), ns.window)
+				return
+			}
+			cp := cardPayload{
+				Subtype: cardTypeSelect.Selected,
+				Holder:  cardHolderInput.Text,
+				Number:  cardNumberInput.Text,
+				Expiry:  cardExpiryInput.Text,
+				CVV:     cardCVVInput.Text,
+			}
+			cardJSON, _ := json.Marshal(cp)
+			service = "CARD:" + cardNameInput.Text
+			username = cardTypeSelect.Selected
+			secret = string(cardJSON)
+		default:
+			if secret == "" {
+				ShowAppError(fmt.Errorf("password cannot be empty"), ns.window)
+				return
+			}
+			if service == "" {
+				ShowAppError(fmt.Errorf("service name cannot be empty"), ns.window)
+				return
+			}
 		}
 
 		go func() {
@@ -192,7 +340,7 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 				return
 			}
 
-			nonce, ciphertext, err := EncryptAES256GCM(password, ss)
+			nonce, ciphertext, err := EncryptAES256GCM(secret, ss)
 			if err != nil {
 				fyne.Do(func() {
 					ShowAppError(fmt.Errorf("encryption failed: %v", err), ns.window)
@@ -200,10 +348,12 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 				return
 			}
 
-			entry := model.NewPasswordEntry()
+			entry := model.NewVaultEntry()
 			entry.KyberCiphertext = ct
 			entry.Nonce = nonce
 			entry.Ciphertext = ciphertext
+			entry.Type = entryType
+			entry.CardSubtype = cardSubtype
 			entry.Service = service
 			entry.Username = username
 
@@ -212,7 +362,7 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 			err = WriteVault(entries, vaultFile, ns.appState.encryptionKey, ns.appState.verificationKey, ns.appState.kdfParams)
 			if err != nil {
 				fyne.Do(func() {
-					ShowAppError(fmt.Errorf("failed to save password: %v", err), ns.window)
+					ShowAppError(fmt.Errorf("failed to save vault item: %v", err), ns.window)
 				})
 				return
 			}
@@ -221,39 +371,35 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 				serviceInput.SetText("")
 				usernameInput.SetText("")
 				passwordInput.SetText("")
-				ShowAppInformation("Success", "✓ Password saved successfully!", ns.window)
+				noteTitleInput.SetText("")
+				noteContentInput.SetText("")
+				cardNameInput.SetText("")
+				cardHolderInput.SetText("")
+				cardNumberInput.SetText("")
+				cardExpiryInput.SetText("")
+				cardCVVInput.SetText("")
+				ShowAppInformation("Success", "✓ Item saved successfully!", ns.window)
 			})
 		}()
 	}, 220, 48)
 
-	viewBtn := CreateNeonButton("📋 VIEW ALL", func() {
+	viewBtn := CreateNeonButton("📋 VIEW ALL ITEMS", func() {
 		ShowPasswordsView(ns.window, ns.app, ns.appState)
 	}, 150, 48)
 
 	// Enhanced header
-	headerText := CreateHeaderText("ADD NEW PASSWORD", 18)
+	headerText := CreateHeaderText("ADD VAULT ITEM", 18)
 	headerSection := container.NewVBox(headerText, CreateGlowingDivider())
-
-	// Enhanced styled inputs
-	serviceLabel := CreateLabel("SERVICE NAME", 11, ColorPurple, true)
-	usernameLabel := CreateLabel("USERNAME / EMAIL", 11, ColorPurple, true)
-	passwordLabel := CreateLabel("PASSWORD", 11, ColorPurple, true)
-
-	styledServiceInput := CreateStyledInput(serviceInput, 650, 42)
-	styledUsernameInput := CreateStyledInput(usernameInput, 650, 42)
-	styledPasswordInput := CreateStyledInput(passwordInput, 650, 42)
 
 	formContent := container.NewVBox(
 		headerSection,
 		widget.NewLabel(""),
-		serviceLabel,
-		container.NewCenter(styledServiceInput),
+		CreateLabel("ITEM TYPE", 11, ColorPurple, true),
+		styledWideSelect(itemTypeSelect),
 		widget.NewLabel(""),
-		usernameLabel,
-		container.NewCenter(styledUsernameInput),
-		widget.NewLabel(""),
-		passwordLabel,
-		container.NewCenter(styledPasswordInput),
+		passwordSection,
+		noteSection,
+		cardSection,
 		widget.NewLabel(""),
 		widget.NewLabel(""),
 		container.NewCenter(addBtn),
@@ -261,7 +407,7 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 		container.NewCenter(viewBtn),
 	)
 
-	formCard := CreateEnhancedCard(formContent, 750, 520)
+	formCard := CreateEnhancedCard(formContent, 780, 900)
 
 	vaultHeaderText := CreateLabel("📦 VAULT: "+ns.appState.currentVault, 13, ColorAccentCyan, true)
 
@@ -437,79 +583,12 @@ func (ns *NavigationState) createGeneratorView() fyne.CanvasObject {
 
 // createCheckerView creates the password checker view
 func (ns *NavigationState) createCheckerView() fyne.CanvasObject {
-	passwordInput := widget.NewEntry()
+	passwordInput := widget.NewPasswordEntry()
 	passwordInput.PlaceHolder = "Enter password to check"
-
-	// Results container - will be updated
-	resultsContainer := container.NewVBox(
-		widget.NewLabel(""),
-		CreateLabel("Results will appear here", 11, ColorTextSecondary, false),
-		widget.NewLabel(""),
-	)
-
-	checkBtn := CreateNeonButton("CHECK PASSWORD", func() {
-		password := passwordInput.Text
-
-		if password == "" {
-			return
-		}
-
-		// Perform validation
-		vaultFile := GetVaultPath(ns.appState.currentVault)
-		validation := ValidatePassword(password, vaultFile, ns.appState.encryptionKey, ns.appState.verificationKey, ns.appState.privateKey)
-
-		// Check length
-		hasLength := len(password) > 8
-		lengthCheck := CreateCheckItem("Length > 8 characters", hasLength)
-
-		// Check special characters
-		specialChars := "!@#$%^&*()_+-=[]{}|;:,.<>?"
-		hasSpecial := false
-		for _, char := range password {
-			for _, special := range specialChars {
-				if char == special {
-					hasSpecial = true
-					break
-				}
-			}
-			if hasSpecial {
-				break
-			}
-		}
-		specialCheck := CreateCheckItem("Contains special characters", hasSpecial)
-
-		// Check duplicates
-		isDuplicate := !validation.Valid && len(validation.ErrorMessage) > 0 && len(validation.ErrorMessage) >= 4 && validation.ErrorMessage[:4] == "This"
-		duplicateCheck := CreateCheckItem("Not duplicate in vault", !isDuplicate)
-
-		// Create status message
-		var statusMsg string
-		var statusColor = ColorSuccess
-
-		if validation.Valid {
-			statusMsg = "✓ Password is STRONG"
-			statusColor = ColorSuccess
-		} else {
-			statusMsg = "✕ " + validation.ErrorMessage
-			statusColor = ColorDanger
-		}
-
-		statusLabel := CreateLabel(statusMsg, 12, statusColor, true)
-
-		// Update results container
-		resultsContainer.Objects = []fyne.CanvasObject{
-			CreateLabel("PASSWORD STRENGTH", 14, ColorAccentCyan, true),
-			CreateDivider(),
-			widget.NewLabel(""),
-			lengthCheck,
-			specialCheck,
-			duplicateCheck,
-			widget.NewLabel(""),
-			container.NewCenter(statusLabel),
-		}
-		resultsContainer.Refresh()
-
-	}, 200, 44)
+	strengthBar := NewStrengthBar()
+	BindStrengthBar(strengthBar, passwordInput, func() []string {
+		return storedVaultPasswords(ns.appState)
+	})
 
 	headerText := CreateHeaderText("PASSWORD CHECKER", 18)
 	headerSection := container.NewVBox(headerText, CreateGlowingDivider())
@@ -523,9 +602,7 @@ func (ns *NavigationState) createCheckerView() fyne.CanvasObject {
 		passwordLabel,
 		container.NewCenter(styledPasswordInput),
 		widget.NewLabel(""),
-		container.NewCenter(checkBtn),
-		widget.NewLabel(""),
-		resultsContainer,
+		strengthBar,
 	)
 
 	formCard := CreateEnhancedCard(formContent, 750, 500)
@@ -660,7 +737,8 @@ func showSaveGeneratedPasswordDialog(w fyne.Window, fyneApp fyne.App, appState *
 					return
 				}
 
-				entry := model.NewPasswordEntry()
+				entry := model.NewVaultEntry()
+				entry.Type = model.EntryTypePassword
 				entry.KyberCiphertext = ct
 				entry.Nonce = nonce
 				entry.Ciphertext = ciphertext
@@ -672,13 +750,13 @@ func showSaveGeneratedPasswordDialog(w fyne.Window, fyneApp fyne.App, appState *
 				err = WriteVault(entries, vaultFile, appState.encryptionKey, appState.verificationKey, appState.kdfParams)
 				if err != nil {
 					fyne.Do(func() {
-						ShowAppError(fmt.Errorf("failed to save password: %v", err), w)
+						ShowAppError(fmt.Errorf("failed to save vault item: %v", err), w)
 					})
 					return
 				}
 
 				fyne.Do(func() {
-					ShowAppInformation("Success", "✓ Password saved to vault successfully!", w)
+					ShowAppInformation("Success", "✓ Vault item saved to vault successfully!", w)
 				})
 			}()
 		})

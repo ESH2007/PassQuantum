@@ -101,12 +101,12 @@ func OpenVault(w interface{}, fyneApp interface{}, appState *AppState, vaultName
 // Storage wrappers that use the core storage package
 
 // ReadVault reads and decrypts a vault file and returns parsed entries
-func ReadVault(vaultFile string, encryptionKey, verificationKey []byte) ([]*model.PasswordEntry, error) {
+func ReadVault(vaultFile string, encryptionKey, verificationKey []byte) ([]*model.VaultEntry, error) {
 	return storage.ReadVault(vaultFile, encryptionKey, verificationKey)
 }
 
 // WriteVault encrypts and writes a vault file
-func WriteVault(entries []*model.PasswordEntry, vaultFile string, encryptionKey, verificationKey []byte, kdfParams crypto.KDFParams) error {
+func WriteVault(entries []*model.VaultEntry, vaultFile string, encryptionKey, verificationKey []byte, kdfParams crypto.KDFParams) error {
 	return storage.WriteVault(entries, vaultFile, encryptionKey, verificationKey, kdfParams)
 }
 

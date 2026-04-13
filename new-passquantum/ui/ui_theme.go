@@ -230,6 +230,30 @@ type GlowButton struct {
 	glowColor     color.Color
 }
 
+type clickOverlay struct {
+	widget.BaseWidget
+	onTap func()
+}
+
+func newClickOverlay(onTap func()) *clickOverlay {
+	o := &clickOverlay{onTap: onTap}
+	o.ExtendBaseWidget(o)
+	return o
+}
+
+func (o *clickOverlay) Tapped(_ *fyne.PointEvent) {
+	if o.onTap != nil {
+		o.onTap()
+	}
+}
+
+func (o *clickOverlay) TappedSecondary(_ *fyne.PointEvent) {}
+
+func (o *clickOverlay) CreateRenderer() fyne.WidgetRenderer {
+	hitBox := canvas.NewRectangle(color.Transparent)
+	return widget.NewSimpleRenderer(hitBox)
+}
+
 func NewGlowButton(label string, tapped func(), accentColor color.Color) *GlowButton {
 	btn := &GlowButton{
 		glowIntensity: 0.3,
@@ -253,8 +277,8 @@ func CreateSecondaryButton(label string, onClick func(), width, height float32) 
 }
 
 func createColorRoleButton(label string, onClick func(), width, height float32, roleColor color.NRGBA) fyne.CanvasObject {
-	btn := widget.NewButton("", onClick)
-	btn.Importance = widget.LowImportance
+	btn := newClickOverlay(onClick)
+	btn.Resize(fyne.NewSize(width, height))
 
 	bg := canvas.NewRectangle(roleColor)
 	bg.CornerRadius = 6
@@ -276,11 +300,45 @@ func createColorRoleButton(label string, onClick func(), width, height float32, 
 }
 
 func readableTextColor(bg color.NRGBA) color.Color {
-	brightness := 0.299*float64(bg.R) + 0.587*float64(bg.G) + 0.114*float64(bg.B)
-	if brightness > 145 {
-		return color.NRGBA{R: 20, G: 24, B: 30, A: 255}
+	return pickAdaptiveTextColor(bg)
+}
+
+func pickAdaptiveTextColor(bg color.NRGBA) color.NRGBA {
+	light := color.NRGBA{R: 245, G: 248, B: 252, A: 255}
+	dark := color.NRGBA{R: 20, G: 24, B: 30, A: 255}
+
+	lightContrast := wcagContrastRatio(light, bg)
+	darkContrast := wcagContrastRatio(dark, bg)
+
+	if lightContrast >= darkContrast {
+		return light
 	}
-	return color.NRGBA{R: 245, G: 248, B: 252, A: 255}
+	return dark
+}
+
+func wcagContrastRatio(fg color.NRGBA, bg color.NRGBA) float64 {
+	fgL := wcagRelativeLuminance(fg)
+	bgL := wcagRelativeLuminance(bg)
+
+	lighter := math.Max(fgL, bgL)
+	darker := math.Min(fgL, bgL)
+
+	return (lighter + 0.05) / (darker + 0.05)
+}
+
+func wcagRelativeLuminance(c color.NRGBA) float64 {
+	r := wcagLinearizedChannel(c.R)
+	g := wcagLinearizedChannel(c.G)
+	b := wcagLinearizedChannel(c.B)
+	return 0.2126*r + 0.7152*g + 0.0722*b
+}
+
+func wcagLinearizedChannel(v uint8) float64 {
+	srgb := float64(v) / 255.0
+	if srgb <= 0.03928 {
+		return srgb / 12.92
+	}
+	return math.Pow((srgb+0.055)/1.055, 2.4)
 }
 
 // CreateOutlinedButton creates a small outlined button (VER, EDIT, COPY, DEL style)
@@ -562,22 +620,22 @@ func CreateCheckbox(label string, checked bool, onChange func(bool)) *widget.Che
 
 // CreateTabButton creates a tab button for settings
 func CreateTabButton(label string, isActive bool, onClick func()) fyne.CanvasObject {
-	var bgColor color.Color
+	var bgColor color.NRGBA
 	var textColor color.Color
 	var borderColor color.Color
 
 	if isActive {
 		bgColor = ColorCardBg
-		textColor = ColorTextPrimary
+		textColor = readableTextColor(bgColor)
 		borderColor = ColorPrimaryButton
 	} else {
-		bgColor = color.Transparent
-		textColor = ColorTextSecondary
+		bgColor = color.NRGBA{R: ColorBg.R, G: ColorBg.G, B: ColorBg.B, A: 50}
+		textColor = readableTextColor(bgColor)
 		borderColor = color.Transparent
 	}
 
 	text := CreateLabel(label, 11, textColor, false)
-	btn := widget.NewButton("", onClick)
+	btn := newClickOverlay(onClick)
 
 	bg := canvas.NewRectangle(bgColor)
 	bg.CornerRadius = 4

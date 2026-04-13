@@ -7,6 +7,8 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"io"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +19,7 @@ import (
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/storage"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -192,9 +195,7 @@ func buildVaultSettings(w fyne.Window, fyneApp fyne.App, appState *AppState) *fy
 }
 
 func buildDisplaySettings(w fyne.Window, fyneApp fyne.App, appState *AppState) *fyne.Container {
-	themeSelect := widget.NewSelect([]string{"Dark", "Light", "System"}, func(s string) {
-		ShowAppInformation("Theme", "Theme changed to "+s, w)
-	})
+	themeSelect := widget.NewSelect([]string{"Dark", "Light", "System"}, func(_ string) {})
 	themeSelect.PlaceHolder = "Select theme"
 	themeSelect.SetSelected("Dark")
 
@@ -215,7 +216,22 @@ func buildDisplaySettings(w fyne.Window, fyneApp fyne.App, appState *AppState) *
 	}, 280, 40)
 
 	uploadBtn := CreateNeonButton("UPLOAD IMAGE TO ANALYZE", func() {
-		fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+		showThemePicker(fyneApp, w, func() {
+			ShowSettingsScreen(w, fyneApp, appState)
+			ShowAppInformation("Palette Applied", "Theme generated from image and saved for next launch.", w)
+		})
+	}, 300, 40)
+
+	resetPaletteBtn := CreateSecondaryButton("RESET DEFAULT COLORS", func() {
+		fyneApp.Settings().SetTheme(theme.DefaultTheme())
+		resetDefaultPalette()
+		clearManualPalettePreferences(fyneApp)
+		fyneApp.Preferences().SetString(themeImagePathPrefKey, "")
+		ShowSettingsScreen(w, fyneApp, appState)
+	}, 250, 40)
+
+	changeIconBtn := CreateNeonButton("CHANGE APP ICON", func() {
+		fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if err != nil {
 				ShowAppError(err, w)
 				return
@@ -223,34 +239,26 @@ func buildDisplaySettings(w fyne.Window, fyneApp fyne.App, appState *AppState) *
 			if reader == nil {
 				return
 			}
-			defer func() {
-				_ = reader.Close()
-			}()
-
-			img, _, decodeErr := image.Decode(reader)
-			if decodeErr != nil {
-				ShowAppError(fmt.Errorf("could not decode image: %w", decodeErr), w)
+			defer func() { _ = reader.Close() }()
+			data, readErr := io.ReadAll(reader)
+			if readErr != nil || len(data) == 0 {
+				ShowAppError(fmt.Errorf("could not read icon file"), w)
 				return
 			}
-
-			palette, paletteErr := extractTopColors(img, 3)
-			if paletteErr != nil {
-				ShowAppError(paletteErr, w)
-				return
-			}
-
-			applyExtractedPalette(palette)
-			ShowSettingsScreen(w, fyneApp, appState)
-			ShowAppInformation("Palette Applied", fmt.Sprintf("Primary containers: %s\nMain buttons: %s\nSecondary buttons: %s", toHex(palette[0]), toHex(palette[1]), toHex(palette[2])), w)
+			name := filepath.Base(reader.URI().Path())
+			fyneApp.SetIcon(fyne.NewStaticResource(name, data))
+			fyneApp.Preferences().SetString("custom_icon_path", reader.URI().Path())
+			ShowAppInformation("App Icon", "App icon updated. It will also be applied on next launch.", w)
 		}, w)
-		fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".png", ".jpg", ".jpeg", ".gif"}))
-		fileDialog.Show()
-	}, 300, 40)
+		fd.SetFilter(storage.NewExtensionFileFilter([]string{".png", ".jpg", ".jpeg"}))
+		fd.Show()
+	}, 220, 40)
 
-	resetPaletteBtn := CreateSecondaryButton("RESET DEFAULT COLORS", func() {
-		resetDefaultPalette()
-		ShowSettingsScreen(w, fyneApp, appState)
-	}, 250, 40)
+	resetIconBtn := CreateSecondaryButton("RESET APP ICON", func() {
+		fyneApp.Preferences().SetString("custom_icon_path", "")
+		setApplicationIcon(fyneApp)
+		ShowAppInformation("App Icon", "App icon has been reset to the default.", w)
+	}, 200, 40)
 
 	return container.NewVBox(
 		CreateLabel("APPEARANCE", 11, ColorPurple, true),
@@ -281,6 +289,13 @@ func buildDisplaySettings(w fyne.Window, fyneApp fyne.App, appState *AppState) *
 		container.NewCenter(manualPersonalizeBtn),
 		widget.NewLabel(""),
 		container.NewCenter(resetPaletteBtn),
+		widget.NewLabel(""),
+		CreateDivider(),
+		widget.NewLabel(""),
+		CreateLabel("App Icon", 10, ColorPurple, false),
+		CreateLabel("Replace the application icon with any PNG or JPEG image. Takes effect immediately and persists across restarts.", 9, ColorTextSec, false),
+		widget.NewLabel(""),
+		container.NewCenter(container.NewHBox(changeIconBtn, resetIconBtn)),
 	)
 }
 
@@ -526,13 +541,8 @@ func applyExtractedPalette(colors []color.NRGBA) {
 	ColorBorder = ColorBorderCyan
 	ColorGlowCyan = color.NRGBA{R: primary.R, G: primary.G, B: primary.B, A: 80}
 
-	if perceivedBrightness(base) > 145 {
-		ColorTextPrimary = color.NRGBA{R: 20, G: 24, B: 30, A: 255}
-		ColorTextSecondary = color.NRGBA{R: 60, G: 66, B: 77, A: 255}
-	} else {
-		ColorTextPrimary = color.NRGBA{R: 245, G: 248, B: 252, A: 255}
-		ColorTextSecondary = color.NRGBA{R: 180, G: 190, B: 208, A: 255}
-	}
+	ColorTextPrimary = pickAdaptiveTextColor(ColorBg)
+	ColorTextSecondary = pickAdaptiveTextColor(ColorCardBg)
 	ColorTextPrim = ColorTextPrimary
 	ColorTextSec = ColorTextSecondary
 }
@@ -549,8 +559,8 @@ func resetDefaultPalette() {
 	ColorMagenta = ColorAccentPink
 	ColorPurple = color.NRGBA{R: 168, G: 85, B: 247, A: 200}
 
-	ColorTextPrimary = color.NRGBA{R: 255, G: 255, B: 255, A: 255}
-	ColorTextSecondary = color.NRGBA{R: 148, G: 163, B: 184, A: 255}
+	ColorTextPrimary = pickAdaptiveTextColor(ColorBg)
+	ColorTextSecondary = pickAdaptiveTextColor(ColorCardBg)
 	ColorTextPrim = ColorTextPrimary
 	ColorTextSec = ColorTextSecondary
 
@@ -576,10 +586,6 @@ func blend(a color.NRGBA, b color.NRGBA, ratio float64) color.NRGBA {
 		B: uint8(float64(a.B)*inverse + float64(b.B)*ratio),
 		A: 255,
 	}
-}
-
-func perceivedBrightness(c color.NRGBA) float64 {
-	return 0.299*float64(c.R) + 0.587*float64(c.G) + 0.114*float64(c.B)
 }
 
 func toHex(c color.NRGBA) string {

@@ -19,7 +19,7 @@ type VaultFile struct {
 	EncryptedData []byte
 }
 
-// EncryptVault encrypts password entries into a vault file
+// EncryptVault encrypts serialized vault entries into a vault file.
 // The vault file contains:
 // - Version (1 byte)
 // - KDF params (26 bytes)

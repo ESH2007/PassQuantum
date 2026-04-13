@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"passquantum/core/crypto"
-	"passquantum/core/model"
 )
 
 const DefaultAppSecurityMetadataPath = "app-security.pqmeta"
@@ -88,14 +87,6 @@ func ReencryptVaultFile(vaultPath string, currentPassword string, newPassword st
 	}
 
 	return reencryptedVault.Serialize(), newParams, nil
-}
-
-func serializeEntries(entries []*model.PasswordEntry) []byte {
-	plaintext := make([]byte, 0)
-	for _, entry := range entries {
-		plaintext = append(plaintext, entry.Serialize()...)
-	}
-	return plaintext
 }
 
 func resolveSecurityMetadataPath(path string) string {

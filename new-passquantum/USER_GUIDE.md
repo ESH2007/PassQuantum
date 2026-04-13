@@ -67,7 +67,7 @@ After first run, PassQuantum creates these files in the current directory:
    - Without the private key, the file cannot be decrypted
 
 3. **Protect `private.key` carefully**
-   - Anyone with this file can decrypt all your passwords
+   - Anyone with this file can decrypt all your vault items
    - Consider encrypting your home directory
 
 ## Error Messages
@@ -77,9 +77,9 @@ After first run, PassQuantum creates these files in the current directory:
 | "password cannot be empty" | You clicked Add with blank field | Type a password first |
 | "encapsulation failed" | Crypto error (rare) | Restart the app |
 | "encryption failed" | AES error (rare) | Restart the app |
-| "failed to save password" | Disk write error | Check disk space & permissions |
-| "failed to read passwords" | File corrupted or permission denied | Check `passwords.txt` |
-| "No passwords stored yet" | Database is empty | Add a password first |
+| "failed to save vault item" | Disk write error | Check disk space & permissions |
+| "failed to read vault" | File corrupted or permission denied | Check vault file access |
+| "No vault items stored yet" | Vault is empty | Add a vault item first |
 
 ## Security Considerations
 

@@ -100,7 +100,7 @@ UI → Storage → Crypto
    ↓
 4. AES Encryption (crypto/aes.go)
    ↓
-5. Create Entry (model/password_entry.go)
+5. Create Entry (model/vault_entry.go)
    ↓
 6. Serialize & Encrypt Vault (crypto/vault.go)
    ↓
@@ -115,7 +115,7 @@ UI → Storage → Crypto
    ↓
 2. Decrypt Vault (crypto/vault.go)
    ↓
-3. Parse Entries (model/password_entry.go)
+3. Parse Entries (model/vault_entry.go)
    ↓
 4. For each entry:
    - Kyber Decapsulation (crypto/kyber.go)
@@ -160,7 +160,7 @@ Master Key (64 bytes)
 
 #### Vault-Level Encryption
 ```
-1. Serialize all password entries → Plaintext
+1. Serialize all vault entries → Plaintext
 2. Generate random 12-byte nonce
 3. AES-256-GCM(plaintext, encryption_key, nonce) → Ciphertext
 4. HMAC-SHA256(version + kdf_params + ciphertext, verification_key) → MAC
@@ -218,19 +218,21 @@ Master Key (64 bytes)
 
 ### core/model - Data Structures
 
-#### password_entry.go
+#### vault_entry.go
 ```go
-type PasswordEntry struct {
+type VaultEntry struct {
     ID              uint64   // Unique entry identifier
+   Type            EntryType
+   CardSubtype     string
     Service         string   // Service/website name
     Username        string   // Associated username or email
     KyberCiphertext []byte   // Kyber768 encapsulated secret
     Nonce           []byte   // AES-GCM nonce (12 bytes)
-    Ciphertext      []byte   // AES-256-GCM encrypted password
+   Ciphertext      []byte   // AES-256-GCM encrypted entry payload
 }
 ```
 
-- **NewPasswordEntry()**: Creates entry with random ID
+- **NewVaultEntry()**: Creates entry with random ID
 - **Serialize()**: Converts entry to binary format
 - **Deserialize()**: Parses entry from binary format
 
@@ -255,11 +257,11 @@ type PasswordEntry struct {
 - **ShowVaultSelection()**: Displays vault list and management
 - **createVaultCard()**: Creates vault card UI component
 
-#### main_screen.go - Password Manager
-- **ShowMainScreen()**: Main password entry interface
+#### main_screen.go - Vault Manager
+- **ShowMainScreen()**: Main vault item entry interface
 
-#### passwords_view.go - Password Display
-- **ShowPasswordsView()**: Displays all passwords in vault
+#### passwords_view.go - Vault Item Display
+- **ShowPasswordsView()**: Displays all vault items in a vault
 - **createPasswordCard()**: Creates individual password card
 
 #### settings_screen.go - Settings
@@ -396,14 +398,14 @@ func EncryptAES256GCM(plaintext string, sharedSecret []byte) (nonce, ciphertext 
 func DecryptAES256GCM(nonce, ciphertext, sharedSecret []byte) (plaintext string, err error)
 
 // Model
-func NewPasswordEntry() *PasswordEntry
-func (e *PasswordEntry) Serialize() []byte
-func Deserialize(data []byte) (*PasswordEntry, error)
+func NewVaultEntry() *VaultEntry
+func (e *VaultEntry) Serialize() []byte
+func Deserialize(data []byte) (*VaultEntry, error)
 
 // Storage
-func WriteVault(entries []*model.PasswordEntry, vaultPath string, 
+func WriteVault(entries []*model.VaultEntry, vaultPath string, 
                 encKey, verKey []byte, params crypto.KDFParams) error
-func ReadVault(vaultPath string, encKey, verKey []byte) ([]*model.PasswordEntry, error)
+func ReadVault(vaultPath string, encKey, verKey []byte) ([]*model.VaultEntry, error)
 func VaultExists(vaultPath string) bool
 func DeleteVault(vaultPath string) error
 

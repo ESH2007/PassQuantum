@@ -39,11 +39,12 @@ func main() {
 	normalizeLocaleForFyne()
 	_ = os.Setenv("OPENCV_LOG_LEVEL", "ERROR")
 
-	myApp := app.New()
+	myApp := app.NewWithID("com.passquantum.app")
 	setApplicationIcon(myApp)
 	w := myApp.NewWindow("PassQuantum - Post-Quantum Safe Password Manager")
 	w.SetTitle("PassQuantum - Post-Quantum Safe Password Manager")
 	// w.Resize(fyne.NewSize(500, 350))
+	RestoreThemeOnLaunch(myApp, w)
 
 	// Initialize crypto
 	appState := initializeApp()
@@ -72,6 +73,16 @@ func normalizeLocaleForFyne() {
 }
 
 func setApplicationIcon(myApp fyne.App) {
+	if customPath := myApp.Preferences().StringWithFallback("custom_icon_path", ""); customPath != "" {
+		data, err := os.ReadFile(customPath)
+		if err == nil && len(data) > 0 {
+			myApp.SetIcon(fyne.NewStaticResource(filepath.Base(customPath), data))
+			return
+		}
+		// Stale path (file moved/deleted) — clear it and fall through to bundled default.
+		myApp.Preferences().SetString("custom_icon_path", "")
+	}
+
 	iconCandidates := []string{
 		"Icon.png",
 		filepath.Join("..", "Icon.png"),

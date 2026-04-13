@@ -277,7 +277,7 @@ new-passquantum/
 │   │   ├── kyber.go           # Kyber768 keypair management
 │   │   └── vault.go           # Vault encryption/decryption with HMAC
 │   ├── model/                  # Data structures
-│   │   └── password_entry.go  # PasswordEntry struct & serialization
+│   │   └── vault_entry.go     # VaultEntry struct & serialization
 │   └── storage/                # Persistent storage
 │       └── storage.go         # Vault file I/O operations
 ├── ui/                         # User interface

@@ -58,14 +58,14 @@ func TestReencryptVaultFile(t *testing.T) {
 		t.Fatalf("DeriveKeys() original error = %v", err)
 	}
 
-	entry := model.NewPasswordEntry()
+	entry := model.NewVaultEntry()
 	entry.Service = "GitHub"
 	entry.Username = "alice@example.com"
 	entry.KyberCiphertext = []byte{1, 2, 3, 4}
 	entry.Nonce = []byte{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
 	entry.Ciphertext = []byte{9, 8, 7, 6, 5}
 
-	if err := WriteVault([]*model.PasswordEntry{entry}, vaultPath, originalEncryptionKey, originalVerificationKey, originalParams); err != nil {
+	if err := WriteVault([]*model.VaultEntry{entry}, vaultPath, originalEncryptionKey, originalVerificationKey, originalParams); err != nil {
 		t.Fatalf("WriteVault() error = %v", err)
 	}
 
@@ -104,4 +104,3 @@ func TestReencryptVaultFile(t *testing.T) {
 		t.Fatal("ReadVault() ciphertext changed during rotation")
 	}
 }
-

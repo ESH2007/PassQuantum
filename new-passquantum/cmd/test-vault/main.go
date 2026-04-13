@@ -1,13 +1,13 @@
 package main
 
 import (
-"fmt"
-"log"
-"os"
+	"fmt"
+	"log"
+	"os"
 
-"passquantum/core/crypto"
-"passquantum/core/model"
-"passquantum/core/storage"
+	"passquantum/core/crypto"
+	"passquantum/core/model"
+	"passquantum/core/storage"
 )
 
 func main() {
@@ -34,7 +34,7 @@ func main() {
 	fmt.Println("============================================================")
 
 	// Create vault with no entries
-	err = storage.WriteVault([]*model.PasswordEntry{}, vaultFile, encKey, verKey, kdfParams)
+	err = storage.WriteVault([]*model.VaultEntry{}, vaultFile, encKey, verKey, kdfParams)
 	if err != nil {
 		log.Fatal("Failed to create vault:", err)
 	}
@@ -68,7 +68,7 @@ func main() {
 		log.Fatal("Encryption failed:", err)
 	}
 
-	entry := model.NewPasswordEntry()
+	entry := model.NewVaultEntry()
 	entry.KyberCiphertext = ct
 	entry.Nonce = nonce
 	entry.Ciphertext = ciphertext
@@ -79,7 +79,7 @@ func main() {
 	fmt.Printf("  AES ciphertext size: %d bytes\n", len(ciphertext))
 
 	// Save vault with the new entry
-	err = storage.WriteVault([]*model.PasswordEntry{entry}, vaultFile, encKey, verKey, kdfParams)
+	err = storage.WriteVault([]*model.VaultEntry{entry}, vaultFile, encKey, verKey, kdfParams)
 	if err != nil {
 		log.Fatal("Failed to save vault:", err)
 	}

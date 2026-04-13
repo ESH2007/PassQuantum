@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"math/rand"
+	"strings"
 
 	"image/color"
 
@@ -37,9 +39,9 @@ func DefaultPasswordGeneratorSettings() PasswordGeneratorSettings {
 	}
 }
 
-// ShowPasswordsView displays all passwords in the current vault
+// ShowPasswordsView displays all vault items in the current vault.
 func ShowPasswordsView(w fyne.Window, fyneApp fyne.App, appState *AppState) {
-	w.SetTitle("Your Passwords - " + appState.currentVault)
+	w.SetTitle("Your Vault Items - " + appState.currentVault)
 	w.Resize(fyne.NewSize(650, 450))
 
 	// Run decryption in goroutine
@@ -55,25 +57,25 @@ func ShowPasswordsView(w fyne.Window, fyneApp fyne.App, appState *AppState) {
 			})
 			return
 		}
-		// entries is []*model.PasswordEntry
+		// entries is []*model.VaultEntry
 		if len(entries) == 0 {
 			fyne.Do(func() {
-				ShowAppInformation("No Passwords", "No passwords stored in this vault yet.", w)
+				ShowAppInformation("No Vault Items", "No vault items stored in this vault yet.", w)
 			})
 			return
 		}
 
-		// Decrypt and display passwords on main thread
+		// Decrypt and display vault items on main thread.
 		fyne.Do(func() {
 			displayPasswordsList(w, fyneApp, entries, appState)
 		})
 	}()
 }
 
-func displayPasswordsList(w fyne.Window, fyneApp fyne.App, entries []*model.PasswordEntry, appState *AppState) {
+func displayPasswordsList(w fyne.Window, fyneApp fyne.App, entries []*model.VaultEntry, appState *AppState) {
 	var items []fyne.CanvasObject
 
-	headerText := CreateLabel(fmt.Sprintf("PASSWORDS: %d", len(entries)), 14, ColorAccentCyn, true)
+	headerText := CreateLabel(fmt.Sprintf("VAULT ITEMS: %d", len(entries)), 14, ColorAccentCyn, true)
 	headerSection := container.NewVBox(headerText, CreateDivider())
 	items = append(items, headerSection)
 	items = append(items, widget.NewLabel(""))
@@ -93,7 +95,7 @@ func displayPasswordsList(w fyne.Window, fyneApp fyne.App, entries []*model.Pass
 			continue
 		}
 
-		card := createPasswordCard(i+1, entry, plaintext, w, fyneApp, appState)
+		card := createVaultItemCard(i+1, entry, plaintext, w, fyneApp, appState)
 		items = append(items, card)
 		items = append(items, widget.NewLabel(""))
 	}
@@ -110,7 +112,132 @@ func displayPasswordsList(w fyne.Window, fyneApp fyne.App, entries []*model.Pass
 	w.SetContent(bgContainer)
 }
 
-func createPasswordCard(index int, entry *model.PasswordEntry, password string, w fyne.Window, fyneApp fyne.App, appState *AppState) fyne.CanvasObject {
+func createVaultItemCard(index int, entry *model.VaultEntry, payload string, w fyne.Window, fyneApp fyne.App, appState *AppState) fyne.CanvasObject {
+	switch entry.Type {
+	case model.EntryTypeNote:
+		return createNoteCard(index, entry, payload, w, fyneApp, appState)
+	case model.EntryTypeCard:
+		return createCardDetailsCard(index, entry, payload, w, fyneApp, appState)
+	}
+
+	if strings.HasPrefix(entry.Service, "NOTE:") {
+		return createNoteCard(index, entry, payload, w, fyneApp, appState)
+	}
+	if strings.HasPrefix(entry.Service, "CARD:") {
+		return createCardDetailsCard(index, entry, payload, w, fyneApp, appState)
+	}
+	return createPasswordCard(index, entry, payload, w, fyneApp, appState)
+}
+
+func createNoteCard(index int, entry *model.VaultEntry, payload string, w fyne.Window, fyneApp fyne.App, appState *AppState) fyne.CanvasObject {
+	title := strings.TrimPrefix(entry.Service, "NOTE:")
+	content := payload
+
+	var parsed map[string]string
+	if err := json.Unmarshal([]byte(payload), &parsed); err == nil {
+		if v := parsed["title"]; v != "" {
+			title = v
+		}
+		if v := parsed["content"]; v != "" {
+			content = v
+		}
+	}
+
+	preview := content
+	if len(preview) > 120 {
+		preview = preview[:120] + "..."
+	}
+
+	titleLabel := CreateLabel(fmt.Sprintf("#%d - NOTE: %s", index, title), 12, ColorAccentCyn, true)
+	noteLabel := widget.NewLabel("📝 " + preview)
+	noteLabel.Wrapping = fyne.TextWrapWord
+
+	showingFull := false
+	viewBtn := CreateNeonButton("VIEW", func() {
+		if showingFull {
+			noteLabel.SetText("📝 " + preview)
+			showingFull = false
+			return
+		}
+		noteLabel.SetText("📝 " + content)
+		showingFull = true
+	}, 70, 32)
+
+	copyBtn := CreateNeonButton("COPY", func() {
+		w.Clipboard().SetContent(content)
+		ShowAppInformation("Copied", "Note copied to clipboard", w)
+	}, 70, 32)
+
+	deleteBtn := CreateNeonButton("DELETE", func() {
+		ShowAppConfirm("Delete", fmt.Sprintf("Delete note '%s'?", title), func(ok bool) {
+			if ok {
+				deleteEntryByID(entry.ID, "note", w, fyneApp, appState)
+			}
+		}, w)
+	}, 80, 32)
+
+	buttons := container.NewHBox(viewBtn, copyBtn, deleteBtn)
+	return CreateCard(container.NewVBox(titleLabel, noteLabel, buttons), 850, 0, true)
+}
+
+func createCardDetailsCard(index int, entry *model.VaultEntry, payload string, w fyne.Window, fyneApp fyne.App, appState *AppState) fyne.CanvasObject {
+	title := strings.TrimPrefix(entry.Service, "CARD:")
+
+	type cardPayload struct {
+		Subtype string `json:"subtype"`
+		Holder  string `json:"holder"`
+		Number  string `json:"number"`
+		Expiry  string `json:"expiry"`
+		CVV     string `json:"cvv"`
+	}
+
+	cp := cardPayload{Subtype: entry.Username}
+	if entry.CardSubtype != "" {
+		cp.Subtype = entry.CardSubtype
+	}
+	if err := json.Unmarshal([]byte(payload), &cp); err != nil {
+		cp.Number = payload
+	}
+
+	masked := "****"
+	if len(cp.Number) >= 4 {
+		masked = cp.Number[len(cp.Number)-4:]
+	}
+
+	titleLabel := CreateLabel(fmt.Sprintf("#%d - %s CARD: %s", index, strings.ToUpper(cp.Subtype), title), 12, ColorAccentCyn, true)
+	holderLabel := CreateLabel("👤 "+cp.Holder, 10, ColorTextSec, false)
+	numberLabel := widget.NewLabel("💳 **** **** **** " + masked)
+	expiryLabel := CreateLabel("Expiry: "+cp.Expiry, 10, ColorTextSec, false)
+
+	showingFull := false
+	showBtn := CreateNeonButton("SHOW", func() {
+		if showingFull {
+			numberLabel.SetText("💳 **** **** **** " + masked)
+			showingFull = false
+			return
+		}
+		numberLabel.SetText("💳 " + cp.Number)
+		showingFull = true
+	}, 70, 32)
+
+	copyBtn := CreateNeonButton("COPY", func() {
+		w.Clipboard().SetContent(cp.Number)
+		ShowAppInformation("Copied", "Card number copied to clipboard", w)
+	}, 70, 32)
+
+	deleteBtn := CreateNeonButton("DELETE", func() {
+		ShowAppConfirm("Delete", fmt.Sprintf("Delete card '%s'?", title), func(ok bool) {
+			if ok {
+				deleteEntryByID(entry.ID, "card", w, fyneApp, appState)
+			}
+		}, w)
+	}, 80, 32)
+
+	buttons := container.NewHBox(showBtn, copyBtn, deleteBtn)
+	return CreateCard(container.NewVBox(titleLabel, holderLabel, numberLabel, expiryLabel, buttons), 850, 0, true)
+}
+
+func createPasswordCard(index int, entry *model.VaultEntry, password string, w fyne.Window, fyneApp fyne.App, appState *AppState) fyne.CanvasObject {
 	passwordMasked := "••••••••••"
 
 	serviceLabel := CreateLabel(fmt.Sprintf("#%d - %s", index, entry.Service), 12, ColorAccentCyn, true)
@@ -139,6 +266,10 @@ func createPasswordCard(index int, entry *model.PasswordEntry, password string, 
 
 		passwordInput := widget.NewPasswordEntry()
 		passwordInput.SetText(password)
+		passwordStrengthBar := NewStrengthBar()
+		BindStrengthBar(passwordStrengthBar, passwordInput, func() []string {
+			return storedVaultPasswords(appState)
+		})
 
 		// Create styled input containers
 		createInputContainer := func(input fyne.CanvasObject) fyne.CanvasObject {
@@ -161,6 +292,8 @@ func createPasswordCard(index int, entry *model.PasswordEntry, password string, 
 			widget.NewLabel(""),
 			CreateLabel("Password", 11, ColorPurple, true),
 			createInputContainer(passwordInput),
+			widget.NewLabel(""),
+			passwordStrengthBar,
 			widget.NewLabel(""),
 		)
 
@@ -235,7 +368,7 @@ func createPasswordCard(index int, entry *model.PasswordEntry, password string, 
 					if customDialog != nil {
 						customDialog.Hide()
 					}
-					ShowAppInformation("Updated", "Password entry updated", w)
+					ShowAppInformation("Updated", "Vault item updated", w)
 					ShowPasswordsView(w, fyneApp, appState)
 				})
 			}(entry.ID)
@@ -259,40 +392,7 @@ func createPasswordCard(index int, entry *model.PasswordEntry, password string, 
 			if !ok {
 				return
 			}
-
-			go func(id uint64) {
-				appState.mu.Lock()
-				defer appState.mu.Unlock()
-
-				vaultFile := GetVaultPath(appState.currentVault)
-				entries, err := ReadVault(vaultFile, appState.encryptionKey, appState.verificationKey)
-				if err != nil {
-					fyne.Do(func() {
-						ShowAppError(fmt.Errorf("failed to read vault: %w", err), w)
-					})
-					return
-				}
-
-				newEntries := make([]*model.PasswordEntry, 0, len(entries))
-				for _, e := range entries {
-					if e.ID != id {
-						newEntries = append(newEntries, e)
-					}
-				}
-
-				err = WriteVault(newEntries, vaultFile, appState.encryptionKey, appState.verificationKey, appState.kdfParams)
-				if err != nil {
-					fyne.Do(func() {
-						ShowAppError(fmt.Errorf("failed to delete password: %w", err), w)
-					})
-					return
-				}
-
-				fyne.Do(func() {
-					ShowAppInformation("Deleted", "Password deleted successfully", w)
-					ShowPasswordsView(w, fyneApp, appState)
-				})
-			}(entry.ID)
+			deleteEntryByID(entry.ID, "password", w, fyneApp, appState)
 		}, w)
 	}, 80, 32)
 
@@ -300,6 +400,49 @@ func createPasswordCard(index int, entry *model.PasswordEntry, password string, 
 	content := container.NewVBox(serviceLabel, usernameLabel, passwordLabel, buttonRow)
 
 	return CreateCard(content, 850, 0, true)
+}
+
+func deleteEntryByID(entryID uint64, entryKind string, w fyne.Window, fyneApp fyne.App, appState *AppState) {
+	go func(id uint64) {
+		appState.mu.Lock()
+		defer appState.mu.Unlock()
+
+		vaultFile := GetVaultPath(appState.currentVault)
+		entries, err := ReadVault(vaultFile, appState.encryptionKey, appState.verificationKey)
+		if err != nil {
+			fyne.Do(func() {
+				ShowAppError(fmt.Errorf("failed to read vault: %w", err), w)
+			})
+			return
+		}
+
+		newEntries := make([]*model.VaultEntry, 0, len(entries))
+		for _, e := range entries {
+			if e.ID != id {
+				newEntries = append(newEntries, e)
+			}
+		}
+
+		err = WriteVault(newEntries, vaultFile, appState.encryptionKey, appState.verificationKey, appState.kdfParams)
+		if err != nil {
+			fyne.Do(func() {
+				ShowAppError(fmt.Errorf("failed to delete %s: %w", entryKind, err), w)
+			})
+			return
+		}
+
+		fyne.Do(func() {
+			ShowAppInformation("Deleted", capitalizeWord(entryKind)+" deleted successfully", w)
+			ShowPasswordsView(w, fyneApp, appState)
+		})
+	}(entryID)
+}
+
+func capitalizeWord(value string) string {
+	if value == "" {
+		return value
+	}
+	return strings.ToUpper(value[:1]) + value[1:]
 }
 
 // ShowPasswordGenerator displays the password generator screen
@@ -389,6 +532,14 @@ func ShowPasswordGenerator(w fyne.Window, fyneApp fyne.App, appState *AppState) 
 		usernameInput := widget.NewEntry()
 		usernameInput.PlaceHolder = "Username or email"
 
+		generatedPasswordInput := widget.NewEntry()
+		generatedPasswordInput.SetText(generatedPasswordDisplay.Text)
+		generatedPasswordInput.Disable()
+		passwordStrengthBar := NewStrengthBar()
+		BindStrengthBar(passwordStrengthBar, generatedPasswordInput, func() []string {
+			return storedVaultPasswords(appState)
+		})
+
 		// Create styled input containers
 		createInputContainer := func(input fyne.CanvasObject) fyne.CanvasObject {
 			bg := canvas.NewRectangle(color.NRGBA{R: 30, G: 40, B: 50, A: 255})
@@ -416,6 +567,9 @@ func ShowPasswordGenerator(w fyne.Window, fyneApp fyne.App, appState *AppState) 
 			widget.NewLabel(""),
 			CreateLabel("Username", 11, ColorPurple, true),
 			createInputContainer(usernameInput),
+			widget.NewLabel(""),
+			CreateLabel("Strength Analysis", 11, ColorPurple, true),
+			passwordStrengthBar,
 			widget.NewLabel(""),
 		)
 
@@ -474,7 +628,8 @@ func ShowPasswordGenerator(w fyne.Window, fyneApp fyne.App, appState *AppState) 
 						return
 					}
 
-					entry := model.NewPasswordEntry()
+					entry := model.NewVaultEntry()
+					entry.Type = model.EntryTypePassword
 					entry.Service = service
 					entry.Username = username
 					entry.KyberCiphertext = ct
@@ -500,7 +655,7 @@ func ShowPasswordGenerator(w fyne.Window, fyneApp fyne.App, appState *AppState) 
 						if customDialog != nil {
 							customDialog.Hide()
 						}
-						ShowAppInformation("Success", "Password saved to vault!", w)
+						ShowAppInformation("Success", "Vault item saved to vault!", w)
 					})
 				}()
 			})
@@ -714,6 +869,14 @@ func ShowPasswordGeneratorNoVault(w fyne.Window, fyneApp fyne.App, appState *App
 		usernameInput := widget.NewEntry()
 		usernameInput.PlaceHolder = "Username or email"
 
+		generatedPasswordInput := widget.NewEntry()
+		generatedPasswordInput.SetText(generatedPasswordDisplay.Text)
+		generatedPasswordInput.Disable()
+		passwordStrengthBar := NewStrengthBar()
+		BindStrengthBar(passwordStrengthBar, generatedPasswordInput, func() []string {
+			return storedVaultPasswords(appState)
+		})
+
 		// Create styled input containers
 		createInputContainer := func(input fyne.CanvasObject) fyne.CanvasObject {
 			bg := canvas.NewRectangle(color.NRGBA{R: 30, G: 40, B: 50, A: 255})
@@ -741,6 +904,9 @@ func ShowPasswordGeneratorNoVault(w fyne.Window, fyneApp fyne.App, appState *App
 			widget.NewLabel(""),
 			CreateLabel("Username", 11, ColorPurple, true),
 			createInputContainer(usernameInput),
+			widget.NewLabel(""),
+			CreateLabel("Strength Analysis", 11, ColorPurple, true),
+			passwordStrengthBar,
 			widget.NewLabel(""),
 		)
 
@@ -799,7 +965,8 @@ func ShowPasswordGeneratorNoVault(w fyne.Window, fyneApp fyne.App, appState *App
 						return
 					}
 
-					entry := model.NewPasswordEntry()
+					entry := model.NewVaultEntry()
+					entry.Type = model.EntryTypePassword
 					entry.Service = service
 					entry.Username = username
 					entry.KyberCiphertext = ct
@@ -820,7 +987,7 @@ func ShowPasswordGeneratorNoVault(w fyne.Window, fyneApp fyne.App, appState *App
 						if customDialog != nil {
 							customDialog.Hide()
 						}
-						ShowAppInformation("Success", "Password saved to vault!", w)
+						ShowAppInformation("Success", "Vault item saved to vault!", w)
 						ShowVaultSelection(w, fyneApp, appState)
 					})
 				}()

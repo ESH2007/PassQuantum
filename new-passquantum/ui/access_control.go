@@ -130,7 +130,7 @@ func createVaultWithUnlockedSession(appState *AppState, vaultName string) error 
 		return err
 	}
 
-	if err := WriteVault([]*model.PasswordEntry{}, vaultFile, encryptionKey, verificationKey, kdfParams); err != nil {
+	if err := WriteVault([]*model.VaultEntry{}, vaultFile, encryptionKey, verificationKey, kdfParams); err != nil {
 		crypto.WipeBytes(encryptionKey)
 		crypto.WipeBytes(verificationKey)
 		return err

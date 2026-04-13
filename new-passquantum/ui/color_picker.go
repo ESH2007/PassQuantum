@@ -1,17 +1,18 @@
 package main
 
 import (
-"fmt"
-"image/color"
-"math"
-"strconv"
-"strings"
+	"fmt"
+	"image/color"
+	"math"
+	"strconv"
+	"strings"
 
-"fyne.io/fyne/v2"
-"fyne.io/fyne/v2/canvas"
-"fyne.io/fyne/v2/container"
-"fyne.io/fyne/v2/dialog"
-"fyne.io/fyne/v2/widget"
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/theme"
+	"fyne.io/fyne/v2/widget"
 )
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -118,7 +119,7 @@ func (p *SVPicker) DragEnd()                  {}
 
 func (p *SVPicker) CreateRenderer() fyne.WidgetRenderer {
 	raster := canvas.NewRasterWithPixels(func(x, y, w, h int) color.Color {
-if w <= 1 || h <= 1 {
+		if w <= 1 || h <= 1 {
 			return color.NRGBA{A: 255}
 		}
 		s := float64(x) / float64(w-1)
@@ -223,7 +224,7 @@ func (s *GradientSlider) DragEnd()                  {}
 
 func (s *GradientSlider) CreateRenderer() fyne.WidgetRenderer {
 	raster := canvas.NewRasterWithPixels(func(x, y, w, h int) color.Color {
-if w <= 1 {
+		if w <= 1 {
 			return color.NRGBA{A: 255}
 		}
 		t := float64(x) / float64(w-1)
@@ -243,8 +244,8 @@ if w <= 1 {
 }
 
 const (
-gsBarH   = float32(20)
-gsThumbR = float32(12)
+	gsBarH   = float32(20)
+	gsThumbR = float32(12)
 )
 
 type gradientSliderRenderer struct {
@@ -288,7 +289,7 @@ func (r *gradientSliderRenderer) Objects() []fyne.CanvasObject {
 
 type colorPickerState struct {
 	h, s, v float64
-	a        uint8
+	a       uint8
 
 	svPicker *SVPicker
 	hueSl    *GradientSlider
@@ -320,32 +321,32 @@ func newColorPickerState(initial color.NRGBA) *colorPickerState {
 	}
 
 	st.hueSl = newGradientSlider(
-func(t float64) color.NRGBA { return hsvToNRGBA(t*360, 1, 1, 255) },
-st.h/360,
-func(val float64) {
-if st.updating {
-return
-}
-st.h = val * 360
-st.svPicker.Hue = st.h
-st.syncAll(false, true)
-},
-)
+		func(t float64) color.NRGBA { return hsvToNRGBA(t*360, 1, 1, 255) },
+		st.h/360,
+		func(val float64) {
+			if st.updating {
+				return
+			}
+			st.h = val * 360
+			st.svPicker.Hue = st.h
+			st.syncAll(false, true)
+		},
+	)
 
 	st.alphaSl = newGradientSlider(
-func(t float64) color.NRGBA {
-base := hsvToNRGBA(st.h, st.s, st.v, 255)
-return color.NRGBA{R: base.R, G: base.G, B: base.B, A: uint8(t * 255)}
-},
-float64(initial.A)/255,
-func(val float64) {
-if st.updating {
-return
-}
-st.a = uint8(val * 255)
-st.syncAll(false, false)
-},
-)
+		func(t float64) color.NRGBA {
+			base := hsvToNRGBA(st.h, st.s, st.v, 255)
+			return color.NRGBA{R: base.R, G: base.G, B: base.B, A: uint8(t * 255)}
+		},
+		float64(initial.A)/255,
+		func(val float64) {
+			if st.updating {
+				return
+			}
+			st.a = uint8(val * 255)
+			st.syncAll(false, false)
+		},
+	)
 
 	st.colorPreview = canvas.NewRectangle(initial)
 	st.colorPreview.CornerRadius = 6
@@ -464,16 +465,16 @@ func buildColorPickerPanel(_ string, st *colorPickerState) fyne.CanvasObject {
 	previewStack := container.NewStack(previewBg, st.colorPreview)
 
 	topRight := container.NewHBox(
-container.NewVBox(
-hexLabel,
-container.NewHBox(hexWrap, eyeWrap),
-),
-canvas.NewRectangle(color.Transparent),
-container.NewVBox(
-canvas.NewText(" ", color.Transparent),
-previewStack,
-),
-)
+		container.NewVBox(
+			hexLabel,
+			container.NewHBox(hexWrap, eyeWrap),
+		),
+		canvas.NewRectangle(color.Transparent),
+		container.NewVBox(
+			canvas.NewText(" ", color.Transparent),
+			previewStack,
+		),
+	)
 
 	rLbl := canvas.NewText("R", color.NRGBA{R: 239, G: 68, B: 68, A: 255})
 	rLbl.TextSize = 9
@@ -486,31 +487,31 @@ previewStack,
 
 	ew := fyne.NewSize(55, 34)
 	labelsRow := container.NewHBox(
-container.NewGridWrap(ew, container.NewCenter(rLbl)),
-container.NewGridWrap(ew, container.NewCenter(gLbl)),
-container.NewGridWrap(ew, container.NewCenter(bLbl)),
-container.NewGridWrap(ew, container.NewCenter(aLbl)),
-)
+		container.NewGridWrap(ew, container.NewCenter(rLbl)),
+		container.NewGridWrap(ew, container.NewCenter(gLbl)),
+		container.NewGridWrap(ew, container.NewCenter(bLbl)),
+		container.NewGridWrap(ew, container.NewCenter(aLbl)),
+	)
 	entriesRow := container.NewHBox(
-container.NewGridWrap(ew, st.rEntry),
-container.NewGridWrap(ew, st.gEntry),
-container.NewGridWrap(ew, st.bEntry),
-container.NewGridWrap(ew, st.aEntry),
-)
+		container.NewGridWrap(ew, st.rEntry),
+		container.NewGridWrap(ew, st.gEntry),
+		container.NewGridWrap(ew, st.bEntry),
+		container.NewGridWrap(ew, st.aEntry),
+	)
 
-	hueWrap   := container.NewGridWrap(fyne.NewSize(240, gsThumbR*2), st.hueSl)
+	hueWrap := container.NewGridWrap(fyne.NewSize(240, gsThumbR*2), st.hueSl)
 	alphaWrap := container.NewGridWrap(fyne.NewSize(240, gsThumbR*2), st.alphaSl)
 
 	rightCol := container.NewVBox(
-topRight,
-widget.NewLabel(""),
-labelsRow,
-entriesRow,
-widget.NewLabel(""),
-hueWrap,
-widget.NewLabel(""),
-alphaWrap,
-)
+		topRight,
+		widget.NewLabel(""),
+		labelsRow,
+		entriesRow,
+		widget.NewLabel(""),
+		hueWrap,
+		widget.NewLabel(""),
+		alphaWrap,
+	)
 
 	gap := canvas.NewRectangle(color.Transparent)
 	gap.SetMinSize(fyne.NewSize(14, 1))
@@ -523,16 +524,16 @@ alphaWrap,
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 func ShowColorPersonalizationDialog(w fyne.Window, fyneApp fyne.App, appState *AppState) {
-	bgSt      := newColorPickerState(ColorBg)
+	bgSt := newColorPickerState(ColorBg)
 	primarySt := newColorPickerState(ColorPrimaryButton)
-	secondSt  := newColorPickerState(ColorSecondaryButton)
+	secondSt := newColorPickerState(ColorSecondaryButton)
 
 	tabNames := []string{"Background", "Main Buttons", "Secondary Buttons"}
-	states   := []*colorPickerState{bgSt, primarySt, secondSt}
+	states := []*colorPickerState{bgSt, primarySt, secondSt}
 	selected := 0
 
 	tabStrip := container.NewGridWithColumns(3)
-	content  := container.NewMax()
+	content := container.NewMax()
 
 	var rebuildTabs func()
 	rebuildTabs = func() {
@@ -553,17 +554,19 @@ func ShowColorPersonalizationDialog(w fyne.Window, fyneApp fyne.App, appState *A
 
 	applyBtn := CreateNeonButton("APPLY COLORS", func() {
 		palette := []color.NRGBA{bgSt.current(), primarySt.current(), secondSt.current()}
+		fyneApp.Settings().SetTheme(theme.DefaultTheme())
 		applyExtractedPalette(palette)
+		persistManualPalettePreferences(fyneApp, palette)
 		if d != nil {
 			d.Hide()
 		}
 		ShowSettingsScreen(w, fyneApp, appState)
 		ShowAppInformation(
-"Colors Applied",
-fmt.Sprintf("Background: %s\nMain Buttons: %s\nSecondary: %s",
-toHex(palette[0]), toHex(palette[1]), toHex(palette[2])),
-w,
-)
+			"Colors Applied",
+			fmt.Sprintf("Background: %s\nMain Buttons: %s\nSecondary: %s",
+				toHex(palette[0]), toHex(palette[1]), toHex(palette[2])),
+			w,
+		)
 	}, 180, 40)
 
 	cancelBtn := CreateSecondaryButton("CANCEL", func() {
@@ -577,15 +580,15 @@ w,
 	divider.SetMinSize(fyne.NewSize(560, 1))
 
 	body := container.NewVBox(
-container.NewCenter(titleLabel),
-divider,
-widget.NewLabel(""),
-tabStrip,
-widget.NewLabel(""),
-content,
-widget.NewLabel(""),
-container.NewCenter(container.NewHBox(cancelBtn, applyBtn)),
-)
+		container.NewCenter(titleLabel),
+		divider,
+		widget.NewLabel(""),
+		tabStrip,
+		widget.NewLabel(""),
+		content,
+		widget.NewLabel(""),
+		container.NewCenter(container.NewHBox(cancelBtn, applyBtn)),
+	)
 
 	card := CreateCard(container.NewPadded(body), 620, 0, true)
 	d = dialog.NewCustomWithoutButtons("", container.NewPadded(card), w)
