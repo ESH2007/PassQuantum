@@ -22,10 +22,12 @@ import numpy as np
 
 DATA_FILE = "face_data.pkl"
 DEFAULT_TOLERANCE = 0.45
-DEFAULT_TRAIN_SAMPLES = 20
-RESIZE_SCALE = 0.5
-MONITOR_INTERVAL_SECONDS = 0.1
+DEFAULT_TRAIN_SAMPLES = 50
+RESIZE_SCALE = 0.35
+MONITOR_INTERVAL_SECONDS = 0.5
 FACE_LOST_SIGNAL_SECONDS = 3.0
+READ_FAILURE_REOPEN_THRESHOLD = 8
+READ_FAILURE_LOG_INTERVAL = 20
 
 
 # ==============================
@@ -72,12 +74,29 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Run without cv2.imshow windows (headless debug mode).",
     )
+    parser.add_argument(
+        "--camera-index",
+        type=int,
+        default=0,
+        help="Camera index to open (default: 0). Try 1/2 if 0 is busy.",
+    )
+    parser.add_argument(
+        "--camera-backend",
+        choices=["auto", "dshow", "msmf", "any"],
+        default="auto",
+        help=(
+            "Camera backend to use. auto tries DSHOW then MSMF then ANY on Windows; "
+            "default: auto."
+        ),
+    )
     args = parser.parse_args()
 
     if args.tolerance <= 0:
         parser.error("--tolerance must be > 0")
     if args.samples <= 0:
         parser.error("--samples must be > 0")
+    if args.camera_index < 0:
+        parser.error("--camera-index must be >= 0")
 
     return args
 
@@ -121,11 +140,63 @@ def load_encodings(file_path: str) -> List[np.ndarray]:
 # Camera + Face Detection
 # ==============================
 
-def open_camera() -> cv2.VideoCapture:
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        raise RuntimeError("Unable to open webcam (camera index 0)")
-    return cap
+def _camera_backends_for_selection(selection: str) -> List[Tuple[str, int]]:
+    if selection == "any":
+        return [("any", cv2.CAP_ANY)]
+    if selection == "dshow":
+        return [("dshow", cv2.CAP_DSHOW)]
+    if selection == "msmf":
+        return [("msmf", cv2.CAP_MSMF)]
+
+    if os.name == "nt":
+        return [
+            ("dshow", cv2.CAP_DSHOW),
+            ("msmf", cv2.CAP_MSMF),
+            ("any", cv2.CAP_ANY),
+        ]
+    return [("any", cv2.CAP_ANY)]
+
+
+def open_camera(camera_index: int, backend_selection: str) -> Tuple[cv2.VideoCapture, str]:
+    backends = _camera_backends_for_selection(backend_selection)
+    errors: List[str] = []
+
+    for backend_name, backend_id in backends:
+        cap = cv2.VideoCapture(camera_index, backend_id)
+        if not cap.isOpened():
+            errors.append(f"{backend_name}: open failed")
+            cap.release()
+            continue
+
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+
+        # Some Windows camera stacks need a handful of grabs before frames stabilize.
+        warmup_ok = False
+        for _ in range(5):
+            ok, _ = cap.read()
+            if ok:
+                warmup_ok = True
+                break
+
+        if warmup_ok:
+            log(f"[CAMERA] Opened index={camera_index} backend={backend_name}")
+            return cap, backend_name
+
+        errors.append(f"{backend_name}: opened but failed warmup reads")
+        cap.release()
+
+    raise RuntimeError(
+        "Unable to open webcam. "
+        f"index={camera_index}, backend_selection={backend_selection}, attempts={'; '.join(errors)}"
+    )
+
+
+def reopen_camera(args: argparse.Namespace, last_backend: str) -> Tuple[cv2.VideoCapture, str]:
+    preferred = args.camera_backend if args.camera_backend != "auto" else last_backend
+    try:
+        return open_camera(args.camera_index, preferred)
+    except RuntimeError:
+        return open_camera(args.camera_index, args.camera_backend)
 
 
 def detect_faces(frame_bgr: np.ndarray) -> Tuple[List[Tuple[int, int, int, int]], List[np.ndarray]]:
@@ -176,14 +247,26 @@ def run_training_mode(args: argparse.Namespace) -> bool:
 
     collected: List[np.ndarray] = []
     start = time.perf_counter()
-    cap = open_camera()
+    cap, backend_name = open_camera(args.camera_index, args.camera_backend)
+    consecutive_read_failures = 0
 
     try:
         while len(collected) < args.samples:
             ok, frame = cap.read()
             if not ok:
-                log("[TRAIN] Failed to read frame from webcam.")
+                consecutive_read_failures += 1
+                if consecutive_read_failures % READ_FAILURE_LOG_INTERVAL == 1:
+                    log(
+                        "[TRAIN] Failed to read frame from webcam "
+                        f"({consecutive_read_failures} consecutive failures)."
+                    )
+                if consecutive_read_failures >= READ_FAILURE_REOPEN_THRESHOLD:
+                    log("[TRAIN] Reopening camera after repeated frame read failures.")
+                    cap.release()
+                    cap, backend_name = reopen_camera(args, backend_name)
+                    consecutive_read_failures = 0
                 continue
+            consecutive_read_failures = 0
 
             locations, encodings = detect_faces(frame)
             colors = [(0, 255, 0)] * len(locations)
@@ -239,7 +322,8 @@ def run_monitor_mode(args: argparse.Namespace, known_encodings: Sequence[np.ndar
     else:
         log("[MONITOR] Press Q to quit.")
 
-    cap = open_camera()
+    cap, backend_name = open_camera(args.camera_index, args.camera_backend)
+    consecutive_read_failures = 0
 
     last_check = 0.0
     last_known_seen = time.monotonic()
@@ -254,8 +338,19 @@ def run_monitor_mode(args: argparse.Namespace, known_encodings: Sequence[np.ndar
         while True:
             ok, frame = cap.read()
             if not ok:
-                log("[MONITOR] Failed to read frame from webcam.")
+                consecutive_read_failures += 1
+                if consecutive_read_failures % READ_FAILURE_LOG_INTERVAL == 1:
+                    log(
+                        "[MONITOR] Failed to read frame from webcam "
+                        f"({consecutive_read_failures} consecutive failures)."
+                    )
+                if consecutive_read_failures >= READ_FAILURE_REOPEN_THRESHOLD:
+                    log("[MONITOR] Reopening camera after repeated frame read failures.")
+                    cap.release()
+                    cap, backend_name = reopen_camera(args, backend_name)
+                    consecutive_read_failures = 0
                 continue
+            consecutive_read_failures = 0
 
             now = time.monotonic()
             if now - last_check >= MONITOR_INTERVAL_SECONDS:
