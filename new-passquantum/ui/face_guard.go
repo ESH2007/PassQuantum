@@ -150,7 +150,7 @@ func (g *FaceGuard) Launch() error {
 func buildPythonCommand(script string) (*exec.Cmd, error) {
 	scriptPath := resolveScript(script)
 
-	for _, interp := range []string{"python3", "python"} {
+	for _, interp := range []string{"python", "python"} {
 		if interpPath, err := exec.LookPath(interp); err == nil {
 			cmd := exec.Command(interpPath, scriptPath)
 			// Run from the script's own directory so face_data.pkl resolves correctly.
