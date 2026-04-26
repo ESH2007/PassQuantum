@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"image"
 	_ "image/jpeg" // register JPEG decoder
+	"io"
 	"log"
 	"net"
 	"os"
@@ -54,6 +55,7 @@ type FaceGuard struct {
 	listener  net.Listener
 	conn      net.Conn
 	connReady chan struct{} // closed by Listen() once Python has connected
+	cmd       *exec.Cmd     // the running Python process; nil until Launch() succeeds
 
 	// OnFrame is called on the Go main goroutine with each decoded JPEG frame
 	// received during training.  May be nil.
@@ -92,18 +94,54 @@ func NewFaceGuard() (*FaceGuard, error) {
 
 // Launch starts the face_guard.py child process.
 // It tries "python3" first; if that fails it tries "python".
-// The process is started detached (Stdout/Stderr are inherited so logs appear
-// in the terminal where the app is run from).
+//
+// Python's stderr is piped to Go's logger so import errors, webcam failures,
+// and any other crash output are visible in the app log rather than silently
+// discarded.  A background goroutine also calls cmd.Wait() and logs a clear
+// message if the process exits unexpectedly.
+//
 // Launch is non-blocking — it does not wait for the process to finish.
 func (g *FaceGuard) Launch() error {
 	cmd, err := buildPythonCommand(faceGuardScript)
 	if err != nil {
 		return fmt.Errorf("face guard: no Python interpreter found: %w", err)
 	}
+
+	// Pipe Python's stderr into Go's logger so errors (ImportError, webcam
+	// failures, tracebacks) are always visible.
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("face guard: could not create stderr pipe: %w", err)
+	}
+
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("face guard: failed to start %s: %w", faceGuardScript, err)
 	}
+
+	g.cmd = cmd
 	log.Printf("[FaceGuard] Launched %s (pid %d)", faceGuardScript, cmd.Process.Pid)
+
+	// Forward every line of Python stderr to Go's logger.
+	go func() {
+		scanner := bufio.NewScanner(stderrPipe)
+		for scanner.Scan() {
+			log.Printf("[face_guard.py] %s", scanner.Text())
+		}
+	}()
+
+	// Watch for unexpected process exit and emit a clear error log.
+	go func() {
+		err := cmd.Wait()
+		if err != nil {
+			log.Printf("[FaceGuard] ERROR: face_guard.py exited unexpectedly: %v", err)
+			log.Printf("[FaceGuard] Hint: check that python3 is installed with cv2, face_recognition, and numpy.")
+		} else {
+			log.Printf("[FaceGuard] face_guard.py exited cleanly (process finished).")
+		}
+		// Drain the stderrPipe scanner above will reach EOF on its own.
+		_ = io.Discard // reference io so the import is used
+	}()
+
 	return nil
 }
 
