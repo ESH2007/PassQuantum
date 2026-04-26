@@ -127,7 +127,7 @@ func buildSettingsPanel(title string, description string, content fyne.CanvasObj
 	return CreateCard(container.NewVBox(header, widget.NewLabel(""), content), 820, 0, true)
 }
 
-func buildSecuritySettings(w fyne.Window, _ fyne.App, appState *AppState) *fyne.Container {
+func buildSecuritySettings(w fyne.Window, fyneApp fyne.App, appState *AppState) *fyne.Container {
 	passwordStrength := widget.NewSelect([]string{"Weak", "Medium", "Strong", "Very Strong"}, func(s string) {})
 	passwordStrength.PlaceHolder = "Select password strength requirement"
 	passwordStrength.SetSelected("Strong")
@@ -138,6 +138,104 @@ func buildSecuritySettings(w fyne.Window, _ fyne.App, appState *AppState) *fyne.
 
 	profileStatus := CreateLabel("App-level verifier active and bound to the current private key.", 10, ColorTextSec, false)
 
+	// ── Monitored Apps section ──────────────────────────────────────────────
+	// A scrollable list of currently running processes rendered as checkboxes.
+	// Checked apps are force-killed whenever the face-loss lock fires.
+
+	warningColor := color.NRGBA{R: 220, G: 90, B: 40, A: 255} // amber-orange
+
+	warningCard := CreateCardWithBorderColor(
+		container.NewVBox(
+			CreateLabel("⚠  FORCE-KILL WARNING", 11, warningColor, true),
+			widget.NewLabel(""),
+			CreateLabel(
+				"The processes checked below will be force-killed with NO save prompt\n"+
+					"as soon as your face is not detected for 5 seconds.\n"+
+					"Make sure any unsaved work in those apps is acceptable to lose.",
+				10, ColorTextPrimary, false,
+			),
+		),
+		760, 0, warningColor,
+	)
+
+	prefs := fyneApp.Preferences()
+
+	// appListContainer holds the checkbox rows; rebuilt by refreshAppList.
+	appListContainer := container.NewVBox()
+
+	var refreshAppList func()
+	refreshAppList = func() {
+		processes := listRunningProcesses()
+		saved := loadKillApps(prefs)
+		savedSet := make(map[string]struct{}, len(saved))
+		for _, s := range saved {
+			savedSet[s] = struct{}{}
+		}
+
+		appListContainer.Objects = nil
+
+		for _, name := range processes {
+			procName := name // capture for closure
+			_, isChecked := savedSet[procName]
+
+			var chk *widget.Check
+			chk = widget.NewCheck(procName, func(checked bool) {
+				if checked {
+					// Show confirmation before adding to kill list.
+					dialog.NewConfirm(
+						"Add to kill list?",
+						"\""+procName+"\" will be force-closed with no save prompt\n"+
+							"if your face is not detected for 5 seconds.\n\nProceed?",
+						func(ok bool) {
+							if ok {
+								current := loadKillApps(prefs)
+								// Avoid duplicates.
+								for _, s := range current {
+									if s == procName {
+										return
+									}
+								}
+								saveKillApps(prefs, append(current, procName))
+							} else {
+								// User cancelled — revert the checkbox state.
+								chk.SetChecked(false)
+							}
+						},
+						w,
+					).Show()
+				} else {
+					// Unchecking: remove immediately, no confirmation needed.
+					current := loadKillApps(prefs)
+					updated := current[:0]
+					for _, s := range current {
+						if s != procName {
+							updated = append(updated, s)
+						}
+					}
+					saveKillApps(prefs, updated)
+				}
+			})
+			chk.SetChecked(isChecked)
+
+			appListContainer.Add(chk)
+		}
+
+		if len(processes) == 0 {
+			appListContainer.Add(CreateLabel("No running processes found.", 10, ColorTextSec, false))
+		}
+
+		appListContainer.Refresh()
+	}
+
+	refreshAppList() // initial population
+
+	refreshBtn := CreateSecondaryButton("REFRESH APPS", func() {
+		refreshAppList()
+	}, 160, 36)
+
+	appScroll := container.NewVScroll(appListContainer)
+	appScroll.SetMinSize(fyne.NewSize(760, 200))
+
 	return container.NewVBox(
 		CreateLabel("MASTER PASSWORD", 11, ColorPurple, true),
 		profileStatus,
@@ -146,6 +244,17 @@ func buildSecuritySettings(w fyne.Window, _ fyne.App, appState *AppState) *fyne.
 		passwordStrength,
 		widget.NewLabel(""),
 		container.NewCenter(changePwBtn),
+		widget.NewLabel(""),
+		CreateDivider(),
+		widget.NewLabel(""),
+		CreateLabel("MONITORED APPS", 11, ColorPurple, true),
+		CreateLabel("These apps will be force-closed when face is not detected for 5 seconds.", 10, ColorTextSec, false),
+		widget.NewLabel(""),
+		warningCard,
+		widget.NewLabel(""),
+		container.NewHBox(refreshBtn),
+		widget.NewLabel(""),
+		appScroll,
 		widget.NewLabel(""),
 		CreateDivider(),
 	)

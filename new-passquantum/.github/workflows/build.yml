@@ -1,0 +1,145 @@
+name: Build PassQuantum
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+# ─────────────────────────────────────────────────────────────────────────────
+# All three jobs run on ubuntu-latest to mirror build.sh exactly:
+#   • Linux  → native CGO build
+#   • Windows → fyne-cross windows (Docker)
+#   • macOS  → fyne-cross darwin  (Docker + phracker MacOSX11.3 SDK)
+# ─────────────────────────────────────────────────────────────────────────────
+
+jobs:
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Linux native build  (mirrors: CGO_ENABLED=1 go build ./ui)
+  # ──────────────────────────────────────────────────────────────────────────
+  build-linux:
+    name: Build — Linux (amd64)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go ${{ '1.22' }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+          cache-dependency-path: new-passquantum/go.sum
+
+      - name: Install Fyne CGO dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev \
+            xorg-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxxf86vm-dev
+
+      - name: Build Linux binary
+        working-directory: new-passquantum
+        run: CGO_ENABLED=1 go build -v -o build/linux/PassQuantum ./ui
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PassQuantum-linux-amd64
+          path: new-passquantum/build/linux/PassQuantum
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Windows cross-build via fyne-cross + Docker
+  # (mirrors: fyne-cross windows -arch=amd64 ...)
+  # ──────────────────────────────────────────────────────────────────────────
+  build-windows:
+    name: Build — Windows (amd64)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+          cache-dependency-path: new-passquantum/go.sum
+
+      - name: Install fyne-cross
+        run: go install github.com/fyne-io/fyne-cross@latest
+
+      - name: Build Windows binary (fyne-cross)
+        working-directory: new-passquantum
+        run: |
+          fyne-cross windows \
+            -arch=amd64 \
+            -app-id=com.passquantum.app \
+            -name="PassQuantum" \
+            -icon=Icon.png \
+            ./ui
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PassQuantum-windows-amd64
+          path: new-passquantum/fyne-cross/dist/windows-amd64/
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # macOS cross-build via fyne-cross + Docker + phracker MacOSX11.3 SDK
+  # (mirrors: fyne-cross darwin -arch=* --macosx-sdk-path=... ./ui)
+  # ──────────────────────────────────────────────────────────────────────────
+  build-macos:
+    name: Build — macOS (amd64)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+          cache-dependency-path: new-passquantum/go.sum
+
+      - name: Install fyne-cross
+        run: go install github.com/fyne-io/fyne-cross@latest
+
+      - name: Download MacOSX11.3 SDK
+        run: |
+          mkdir -p /tmp/SDKs
+          curl -fsSL \
+            "https://github.com/phracker/MacOSX-SDKs/releases/download/11.3/MacOSX11.3.sdk.tar.xz" \
+            -o /tmp/MacOSX11.3.sdk.tar.xz
+          tar -xf /tmp/MacOSX11.3.sdk.tar.xz -C /tmp/SDKs/
+
+      - name: Build macOS binary (fyne-cross)
+        working-directory: new-passquantum
+        run: |
+          fyne-cross darwin \
+            -arch=* \
+            -app-id=com.passquantum.app \
+            -name="PassQuantum" \
+            -icon=Icon.png \
+            --macosx-sdk-path=/tmp/SDKs/MacOSX11.3.sdk \
+            ./ui
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PassQuantum-macos-amd64
+          path: new-passquantum/fyne-cross/dist/darwin-amd64/
+          if-no-files-found: error

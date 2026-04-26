@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"image/color"
-	"log"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -59,16 +58,10 @@ func ShowMainScreen(w fyne.Window, fyneApp fyne.App, appState *AppState) {
 	bgContainer := CreateBackgroundContainer(navState.sidebarContainer)
 	w.SetContent(bgContainer)
 
-	// ── Face recognition: start continuous monitor ─────────────────
-	// Called every time the main screen becomes active (including after
-	// each unlock), so the face guard watches the user at all times.
+	// ── Face recognition: restart continuous monitor ───────────────────────
+	// OnLost and OnOK are wired globally in main.go.  We just tell Python to
+	// (re-)start monitoring so it covers every screen from this point on.
 	if guard := appState.faceGuard; guard != nil {
-		guard.OnLost = func() {
-			log.Println("[FaceGuard] FACE_LOST: authorised face no longer detected")
-		}
-		guard.OnOK = func() {
-			log.Println("[FaceGuard] FACE_OK: authorised face recognised")
-		}
 		guard.SendCommand("START_MONITOR")
 	}
 }

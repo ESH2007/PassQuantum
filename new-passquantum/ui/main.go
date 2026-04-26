@@ -31,9 +31,13 @@ type AppState struct {
 	securityProfile        *crypto.AppSecurityProfile
 	mu                     sync.Mutex
 	isUnlocked             bool
+	isTraining             bool
 	currentVault           string
 	startupWarning         string
 	faceGuard              *FaceGuard
+	// lockApp is called from any goroutine to lock the app immediately;
+	// it clears sensitive state and returns the user to the login screen.
+	lockApp func()
 }
 
 func main() {
@@ -59,6 +63,44 @@ func main() {
 			log.Printf("[FaceGuard] WARNING: could not launch face_guard.py: %v", err)
 		}
 		go guard.Listen()
+
+		// Wire the global lock-on-face-loss callback.
+		// OnLost fires whenever Python sends FACE_LOST (face absent for 5 s).
+		// We lock only when the app is actually unlocked and not in training
+		// (during training the user deliberately moves their face).
+		guard.OnLost = func() {
+			appState.mu.Lock()
+			unlocked := appState.isUnlocked
+			training := appState.isTraining
+			appState.mu.Unlock()
+
+			if !unlocked || training {
+				return
+			}
+
+			log.Println("[FaceGuard] FACE_LOST: locking app and killing monitored processes")
+
+			// Kill any user-selected companion apps before locking.
+			go killProcessesByName(loadKillApps(myApp.Preferences()))
+
+			// Lock the UI on the Fyne goroutine.
+			fyne.Do(func() {
+				if appState.lockApp != nil {
+					appState.lockApp()
+				}
+			})
+		}
+
+		guard.OnOK = func() {
+			log.Println("[FaceGuard] FACE_OK: face recognised")
+		}
+	}
+
+	// lockApp clears sensitive state and returns the user to the login screen.
+	// Assigned here (after guard init) so the closure captures w and myApp.
+	appState.lockApp = func() {
+		appState.clearSensitiveState()
+		PromptMasterPassword(w, myApp, appState)
 	}
 
 	// Show master password prompt on startup

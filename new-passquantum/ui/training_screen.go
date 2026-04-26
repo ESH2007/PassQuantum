@@ -29,7 +29,12 @@ const captureSamples = 20
 // ShowTrainingScreen replaces the window content with the face registration UI.
 // onComplete is called (on the Fyne goroutine) once training finishes and
 // START_MONITOR has been dispatched to the Python process.
-func ShowTrainingScreen(w fyne.Window, guard *FaceGuard, onComplete func()) {
+func ShowTrainingScreen(w fyne.Window, guard *FaceGuard, appState *AppState, onComplete func()) {
+	// Mark training as active so the global OnLost handler does not lock the
+	// app while the user is deliberately repositioning their face.
+	appState.mu.Lock()
+	appState.isTraining = true
+	appState.mu.Unlock()
 	// ── Title ──────────────────────────────────────────────────────
 	title := CreateLabel("FACIAL REGISTRATION", 18, ColorAccentCyan, true)
 
@@ -81,6 +86,10 @@ func ShowTrainingScreen(w fyne.Window, guard *FaceGuard, onComplete func()) {
 			fyne.Do(func() {
 				updateCanvasText(statusLabel, "✓ Registration complete")
 				guard.OnFrame = nil
+				// Training finished — re-enable face-loss locking.
+				appState.mu.Lock()
+				appState.isTraining = false
+				appState.mu.Unlock()
 				onComplete()
 			})
 		}

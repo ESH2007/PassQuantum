@@ -57,7 +57,7 @@ func showCreateMasterPasswordScreen(w fyne.Window, fyneApp fyne.App, appState *A
 		// First-time setup: if the face guard is active and no face data exists
 		// yet, show the training screen.  onComplete proceeds to vault selection.
 		if appState.faceGuard != nil && !faceDataExists() {
-			ShowTrainingScreen(w, appState.faceGuard, func() {
+			ShowTrainingScreen(w, appState.faceGuard, appState, func() {
 				ShowVaultSelection(w, fyneApp, appState)
 			})
 			return
@@ -97,6 +97,13 @@ func showUnlockScreen(w fyne.Window, fyneApp fyne.App, appState *AppState) {
 		if !UnlockVault(w, appState, passwordInput.Text) {
 			return
 		}
+
+		// Start continuous face monitoring as soon as the app is unlocked.
+		// This covers the vault-selection screen and any subsequent screen.
+		if appState.faceGuard != nil {
+			go appState.faceGuard.SendCommand("START_MONITOR")
+		}
+
 		ShowVaultSelection(w, fyneApp, appState)
 	}, 280, 50)
 
