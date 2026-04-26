@@ -54,6 +54,14 @@ func showCreateMasterPasswordScreen(w fyne.Window, fyneApp fyne.App, appState *A
 			}
 		}
 
+		// First-time setup: if the face guard is active and no face data exists
+		// yet, show the training screen.  onComplete proceeds to vault selection.
+		if appState.faceGuard != nil && !faceDataExists() {
+			ShowTrainingScreen(w, appState.faceGuard, func() {
+				ShowVaultSelection(w, fyneApp, appState)
+			})
+			return
+		}
 		ShowVaultSelection(w, fyneApp, appState)
 	}, 320, 50)
 
@@ -155,4 +163,11 @@ func buildAccessScreen(title string, subtitle string, warning string, fields []f
 
 	card := CreateEnhancedCard(container.NewVBox(cardObjects...), 560, 0)
 	return CreateBackgroundContainer(container.NewCenter(card))
+}
+
+// faceDataExists reports whether the face_guard.py training output file is present
+// in the current working directory (same directory as the running binary).
+func faceDataExists() bool {
+	_, err := os.Stat("face_data.pkl")
+	return err == nil
 }

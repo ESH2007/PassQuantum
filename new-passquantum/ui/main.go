@@ -33,6 +33,7 @@ type AppState struct {
 	isUnlocked             bool
 	currentVault           string
 	startupWarning         string
+	faceGuard              *FaceGuard
 }
 
 func main() {
@@ -48,6 +49,17 @@ func main() {
 
 	// Initialize crypto
 	appState := initializeApp()
+
+	// Initialize face recognition guard (warn-only on failure — app proceeds without it)
+	if guard, err := NewFaceGuard(); err != nil {
+		log.Printf("[FaceGuard] WARNING: could not create face guard: %v", err)
+	} else {
+		appState.faceGuard = guard
+		if err := guard.Launch(); err != nil {
+			log.Printf("[FaceGuard] WARNING: could not launch face_guard.py: %v", err)
+		}
+		go guard.Listen()
+	}
 
 	// Show master password prompt on startup
 	PromptMasterPassword(w, myApp, appState)
