@@ -45,7 +45,7 @@ func GenerateEasterEggRules(password string) []EasterEggRule {
 
 // EasterEggIntroMessage returns the intro text for the easter egg panel.
 func EasterEggIntroMessage() string {
-	return "🎮 You typed neal.fun — welcome to The PassQuantum Password Game!\nYour password must satisfy all rules simultaneously.\nGood luck. You'll need it."
+	return "You typed neal.fun — welcome to The PassQuantum Password Game! Your password must satisfy all rules simultaneously. Good luck. You'll need it."
 }
 
 func containsDigit(s string) bool {

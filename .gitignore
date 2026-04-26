@@ -6,3 +6,4 @@ SDKs/
 vendor/
 osxcross/
 new-passquantum/ui/zz_passquantum_icon_windows*.syso
+__pycache__/

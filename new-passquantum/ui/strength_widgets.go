@@ -63,7 +63,7 @@ func NewStrengthBar() fyne.CanvasObject {
 		crackLabel,
 		issuesContainer,
 	)
-	easterContainer := container.NewMax()
+	easterContainer := container.NewStack()
 	easterContainer.Hide()
 
 	root := container.NewVBox(normalContainer, easterContainer)

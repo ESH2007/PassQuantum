@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"image/color"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -11,6 +12,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"passquantum/core/model"
+	"passquantum/strength"
 )
 
 // Current active view in the navigation
@@ -158,10 +160,91 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 
 	passwordInput := widget.NewPasswordEntry()
 	passwordInput.PlaceHolder = "Enter password"
-	passwordStrengthBar := NewStrengthBar()
-	BindStrengthBar(passwordStrengthBar, passwordInput, func() []string {
-		return storedVaultPasswords(ns.appState)
-	})
+
+	strengthTrack := canvas.NewRectangle(color.NRGBA{R: 31, G: 41, B: 55, A: 255})
+	strengthTrack.CornerRadius = 6
+	strengthTrack.SetMinSize(fyne.NewSize(240, 14))
+
+	strengthFill := canvas.NewRectangle(scoreColor(strength.ScoreVeryWeak))
+	strengthFill.CornerRadius = 6
+	strengthFill.Resize(fyne.NewSize(48, 14))
+
+	strengthBar := container.NewGridWrap(
+		fyne.NewSize(240, 14),
+		container.NewWithoutLayout(strengthTrack, strengthFill),
+	)
+
+	strengthScore := canvas.NewText("Very Weak", ColorTextPrimary)
+	strengthScore.TextStyle = fyne.TextStyle{Bold: true}
+	strengthScore.TextSize = 12
+
+	strengthCrack := canvas.NewText("Crack time: Instantly", ColorTextSecondary)
+	strengthCrack.TextSize = 11
+
+	strengthIssues := container.NewVBox(
+		newStrengthText("Start typing to analyze password strength.", ColorTextSecondary, 11, false),
+	)
+
+	updateAddStrength := func(value string) {
+		result := strength.Analyze(value, storedVaultPasswords(ns.appState))
+
+		if result.EasterEggMode {
+			strengthFill.FillColor = scoreColor(result.Score)
+			strengthFill.Resize(fyne.NewSize(240, 14))
+			strengthFill.Refresh()
+
+			strengthScore.Text = "Password Game Mode"
+			strengthScore.Refresh()
+
+			strengthCrack.Text = "neal.fun trigger detected"
+			strengthCrack.Refresh()
+
+			strengthIssues.Objects = []fyne.CanvasObject{NewEasterEggPanel(result.EasterEggRules)}
+			strengthIssues.Refresh()
+			return
+		}
+
+		fillWidth := float32(48)
+		if value != "" {
+			fillWidth = 240 * float32(int(result.Score)+1) / 5
+		}
+		if fillWidth < 1 {
+			fillWidth = 1
+		}
+
+		strengthFill.FillColor = scoreColor(result.Score)
+		strengthFill.Resize(fyne.NewSize(fillWidth, 14))
+		strengthFill.Refresh()
+
+		strengthScore.Text = result.ScoreLabel
+		strengthScore.Refresh()
+
+		strengthCrack.Text = "Crack time: " + result.CrackTime
+		strengthCrack.Refresh()
+
+		if value == "" {
+			strengthIssues.Objects = []fyne.CanvasObject{
+				newStrengthText("Start typing to analyze password strength.", ColorTextSecondary, 11, false),
+			}
+		} else {
+			strengthIssues.Objects = []fyne.CanvasObject{NewIssuesList(result.Issues)}
+		}
+		strengthIssues.Refresh()
+	}
+
+	passwordInput.OnChanged = updateAddStrength
+
+	passwordStrengthBar := CreateCard(container.NewVBox(
+		CreateLabel("STRENGTH RESULT", 11, ColorPurple, true),
+		widget.NewLabel(""),
+		container.NewHBox(strengthBar, widget.NewLabel("  "), strengthScore),
+		widget.NewLabel(""),
+		strengthCrack,
+		widget.NewLabel(""),
+		strengthIssues,
+	), 700, 220, true)
+
+	updateAddStrength(passwordInput.Text)
 
 	serviceInput := widget.NewEntry()
 	serviceInput.PlaceHolder = "Service name (e.g., Gmail, GitHub)"
@@ -212,7 +295,7 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 		CreateLabel("PASSWORD", 11, ColorPurple, true),
 		styledWideField(passwordInput),
 		widget.NewLabel(""),
-		passwordStrengthBar,
+		container.NewCenter(passwordStrengthBar),
 	)
 
 	noteSection := container.NewVBox(
@@ -248,6 +331,30 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 		),
 	)
 
+	// Card background rects are declared here so refreshSections can update their
+	// min-sizes live whenever the item type changes.
+	const cardW float32 = 780
+	cardBg := canvas.NewRectangle(ColorCardBg)
+	cardBg.CornerRadius = BorderRadius
+
+	borderGlow := canvas.NewRectangle(ColorBorderCyan)
+	borderGlow.CornerRadius = BorderRadius
+	borderGlow.FillColor = color.NRGBA{R: ColorBorderCyan.R, G: ColorBorderCyan.G, B: ColorBorderCyan.B, A: 120}
+
+	outerGlow := canvas.NewRectangle(color.NRGBA{R: ColorBorderCyan.R, G: ColorBorderCyan.G, B: ColorBorderCyan.B, A: 20})
+	outerGlow.CornerRadius = BorderRadius + 2
+
+	setCardHeight := func(h float32) {
+		cardBg.SetMinSize(fyne.NewSize(cardW, h))
+		borderGlow.SetMinSize(fyne.NewSize(cardW+2, h+2))
+		outerGlow.SetMinSize(fyne.NewSize(cardW+6, h+6))
+		cardBg.Refresh()
+		borderGlow.Refresh()
+		outerGlow.Refresh()
+	}
+
+	var formContent *fyne.Container
+
 	refreshSections := func(selected string) {
 		passwordSection.Hide()
 		noteSection.Hide()
@@ -256,10 +363,17 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 		switch selected {
 		case "Cyphered Note":
 			noteSection.Show()
+			setCardHeight(720)
 		case "Card":
 			cardSection.Show()
+			setCardHeight(920)
 		default:
 			passwordSection.Show()
+			setCardHeight(920)
+		}
+
+		if formContent != nil {
+			formContent.Refresh()
 		}
 	}
 	itemTypeSelect.OnChanged = refreshSections
@@ -391,7 +505,7 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 	headerText := CreateHeaderText("ADD VAULT ITEM", 18)
 	headerSection := container.NewVBox(headerText, CreateGlowingDivider())
 
-	formContent := container.NewVBox(
+	formContent = container.NewVBox(
 		headerSection,
 		widget.NewLabel(""),
 		CreateLabel("ITEM TYPE", 11, ColorPurple, true),
@@ -401,13 +515,17 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 		noteSection,
 		cardSection,
 		widget.NewLabel(""),
-		widget.NewLabel(""),
 		container.NewCenter(addBtn),
 		widget.NewLabel(""),
 		container.NewCenter(viewBtn),
 	)
 
-	formCard := CreateEnhancedCard(formContent, 780, 900)
+	formCard := container.NewStack(
+		container.NewCenter(outerGlow),
+		container.NewCenter(borderGlow),
+		container.NewCenter(cardBg),
+		container.NewPadded(formContent),
+	)
 
 	vaultHeaderText := CreateLabel("📦 VAULT: "+ns.appState.currentVault, 13, ColorAccentCyan, true)
 
@@ -571,7 +689,7 @@ func (ns *NavigationState) createGeneratorView() fyne.CanvasObject {
 		container.NewCenter(container.NewHBox(copyGeneratedBtn, saveToVaultBtn)),
 	)
 
-	formCard := CreateEnhancedCard(formContent, 750, 600)
+	formCard := CreateEnhancedCard(formContent, 750, 700)
 
 	mainContent := container.NewVBox(
 		widget.NewLabel(""),
@@ -583,12 +701,9 @@ func (ns *NavigationState) createGeneratorView() fyne.CanvasObject {
 
 // createCheckerView creates the password checker view
 func (ns *NavigationState) createCheckerView() fyne.CanvasObject {
+
 	passwordInput := widget.NewPasswordEntry()
 	passwordInput.PlaceHolder = "Enter password to check"
-	strengthBar := NewStrengthBar()
-	BindStrengthBar(strengthBar, passwordInput, func() []string {
-		return storedVaultPasswords(ns.appState)
-	})
 
 	headerText := CreateHeaderText("PASSWORD CHECKER", 18)
 	headerSection := container.NewVBox(headerText, CreateGlowingDivider())
@@ -596,16 +711,151 @@ func (ns *NavigationState) createCheckerView() fyne.CanvasObject {
 	passwordLabel := CreateLabel("ENTER PASSWORD", 11, ColorPurple, true)
 	styledPasswordInput := CreateStyledInput(passwordInput, 650, 42)
 
+	track := canvas.NewRectangle(color.NRGBA{R: 31, G: 41, B: 55, A: 255})
+	track.CornerRadius = 6
+	track.SetMinSize(fyne.NewSize(240, 14))
+
+	fill := canvas.NewRectangle(scoreColor(strength.ScoreVeryWeak))
+	fill.CornerRadius = 6
+	fill.Resize(fyne.NewSize(48, 14))
+
+	bar := container.NewGridWrap(
+		fyne.NewSize(240, 14),
+		container.NewWithoutLayout(track, fill),
+	)
+
+	scoreValue := canvas.NewText("Very Weak", ColorTextPrimary)
+	scoreValue.TextStyle = fyne.TextStyle{Bold: true}
+	scoreValue.TextSize = 12
+
+	crackValue := canvas.NewText("Crack time: Instantly", ColorTextSecondary)
+	crackValue.TextSize = 11
+
+	issuesBox := container.NewVBox(
+		newStrengthText("Start typing to analyze password strength.", ColorTextSecondary, 11, false),
+	)
+
+	// Inline rects for strength section and outer card so sizes can be updated live.
+	const outerW float32 = 750
+	const outerHNormal float32 = 500
+	const sectionW float32 = 700
+	const sectionHNormal float32 = 220
+
+	sectionBg := canvas.NewRectangle(ColorCardBg)
+	sectionBg.CornerRadius = BorderRadius
+	sectionBg.SetMinSize(fyne.NewSize(sectionW, sectionHNormal))
+	sectionBorder := canvas.NewRectangle(ColorBorderCyan)
+	sectionBorder.CornerRadius = BorderRadius
+	sectionBorder.SetMinSize(fyne.NewSize(sectionW, sectionHNormal))
+
+	checkerBg := canvas.NewRectangle(ColorCardBg)
+	checkerBg.CornerRadius = BorderRadius
+	checkerBg.SetMinSize(fyne.NewSize(outerW, outerHNormal))
+	checkerBorder := canvas.NewRectangle(ColorBorderCyan)
+	checkerBorder.CornerRadius = BorderRadius
+	checkerBorder.FillColor = color.NRGBA{R: ColorBorderCyan.R, G: ColorBorderCyan.G, B: ColorBorderCyan.B, A: 120}
+	checkerBorder.SetMinSize(fyne.NewSize(outerW+2, outerHNormal+2))
+	checkerOuter := canvas.NewRectangle(color.NRGBA{R: ColorBorderCyan.R, G: ColorBorderCyan.G, B: ColorBorderCyan.B, A: 20})
+	checkerOuter.CornerRadius = BorderRadius + 2
+	checkerOuter.SetMinSize(fyne.NewSize(outerW+6, outerHNormal+6))
+
+	setCheckerSize := func(w, h, sh float32) {
+		sectionBg.SetMinSize(fyne.NewSize(sh, h-280))
+		sectionBorder.SetMinSize(fyne.NewSize(sh, h-280))
+		sectionBg.Refresh()
+		sectionBorder.Refresh()
+		checkerBg.SetMinSize(fyne.NewSize(w, h))
+		checkerBorder.SetMinSize(fyne.NewSize(w+2, h+2))
+		checkerOuter.SetMinSize(fyne.NewSize(w+6, h+6))
+		checkerBg.Refresh()
+		checkerBorder.Refresh()
+		checkerOuter.Refresh()
+	}
+
+	updateStrength := func(value string) {
+		result := strength.Analyze(value, storedVaultPasswords(ns.appState))
+
+		if result.EasterEggMode {
+			fill.FillColor = scoreColor(result.Score)
+			fill.Resize(fyne.NewSize(240, 14))
+			fill.Refresh()
+			setCheckerSize(850, 700, sectionW+100)
+
+			scoreValue.Text = "Password Game Mode"
+			scoreValue.Refresh()
+
+			crackValue.Text = "neal.fun trigger detected"
+			crackValue.Refresh()
+
+			issuesBox.Objects = []fyne.CanvasObject{
+				NewEasterEggPanel(result.EasterEggRules),
+			}
+			issuesBox.Refresh()
+			return
+		}
+
+		setCheckerSize(outerW, outerHNormal, sectionW)
+
+		fillWidth := float32(48)
+		if value != "" {
+			fillWidth = 240 * float32(int(result.Score)+1) / 5
+		}
+		if fillWidth < 1 {
+			fillWidth = 1
+		}
+
+		fill.FillColor = scoreColor(result.Score)
+		fill.Resize(fyne.NewSize(fillWidth, 14))
+		fill.Refresh()
+
+		scoreValue.Text = result.ScoreLabel
+		scoreValue.Refresh()
+
+		crackValue.Text = "Crack time: " + result.CrackTime
+		crackValue.Refresh()
+
+		if value == "" {
+			issuesBox.Objects = []fyne.CanvasObject{
+				newStrengthText("Start typing to analyze password strength.", ColorTextSecondary, 11, false),
+			}
+		} else {
+			issuesBox.Objects = []fyne.CanvasObject{NewIssuesList(result.Issues)}
+		}
+		issuesBox.Refresh()
+	}
+
+	passwordInput.OnChanged = updateStrength
+	updateStrength(passwordInput.Text)
+
+	strengthSection := container.NewMax(
+		sectionBorder,
+		sectionBg,
+		container.NewPadded(container.NewVBox(
+			CreateLabel("STRENGTH RESULT", 11, ColorPurple, true),
+			widget.NewLabel(""),
+			container.NewHBox(bar, widget.NewLabel("  "), scoreValue),
+			widget.NewLabel(""),
+			crackValue,
+			widget.NewLabel(""),
+			issuesBox,
+		)),
+	)
+
 	formContent := container.NewVBox(
 		headerSection,
 		widget.NewLabel(""),
 		passwordLabel,
 		container.NewCenter(styledPasswordInput),
 		widget.NewLabel(""),
-		strengthBar,
+		container.NewCenter(strengthSection),
 	)
 
-	formCard := CreateEnhancedCard(formContent, 750, 500)
+	formCard := container.NewStack(
+		container.NewCenter(checkerOuter),
+		container.NewCenter(checkerBorder),
+		container.NewCenter(checkerBg),
+		container.NewPadded(formContent),
+	)
 
 	mainContent := container.NewVBox(
 		widget.NewLabel(""),
