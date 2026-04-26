@@ -27,7 +27,9 @@ import (
 	_ "image/jpeg" // register JPEG decoder
 	"log"
 	"net"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -106,14 +108,42 @@ func (g *FaceGuard) Launch() error {
 }
 
 // buildPythonCommand constructs an *exec.Cmd for face_guard.py, preferring python3.
+// The script is resolved relative to the executable first (production), then cwd (dev).
 func buildPythonCommand(script string) (*exec.Cmd, error) {
+	scriptPath := resolveScript(script)
+
 	for _, interp := range []string{"python3", "python"} {
-		if path, err := exec.LookPath(interp); err == nil {
-			cmd := exec.Command(path, script)
+		if interpPath, err := exec.LookPath(interp); err == nil {
+			cmd := exec.Command(interpPath, scriptPath)
+			// Run from the script's own directory so face_data.pkl resolves correctly.
+			cmd.Dir = filepath.Dir(scriptPath)
 			return cmd, nil
 		}
 	}
 	return nil, fmt.Errorf("neither python3 nor python found in PATH")
+}
+
+// resolveScript finds the absolute path to script by probing:
+//  1. Same directory as the running executable (production installs, CI builds).
+//  2. Current working directory (development / go run).
+func resolveScript(script string) string {
+	// 1. Next to the executable.
+	if exe, err := os.Executable(); err == nil {
+		candidate := filepath.Join(filepath.Dir(exe), script)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+
+	// 2. Relative to cwd.
+	if cwd, err := os.Getwd(); err == nil {
+		candidate := filepath.Join(cwd, script)
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+
+	return script // last resort — let the OS try
 }
 
 // ==============================

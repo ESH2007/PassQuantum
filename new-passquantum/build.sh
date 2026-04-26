@@ -53,6 +53,7 @@ build_linux() {
     print_header "Building for Linux (AMD64)"
     mkdir -p "$BUILD_DIR/linux"
     CGO_ENABLED=1 go build -o "$BUILD_DIR/linux/$APP_NAME" ./ui
+    cp face_guard.py "$BUILD_DIR/linux/"
     print_success "Linux build complete: $BUILD_DIR/linux/$APP_NAME"
     echo ""
 }
@@ -70,6 +71,7 @@ build_windows() {
         return 1
     fi
 
+    cp face_guard.py "fyne-cross/dist/windows-amd64/"
     print_success "Windows build complete"
     echo ""
 }
@@ -95,6 +97,7 @@ build_macos() {
         return 1
     fi
 
+    cp face_guard.py "fyne-cross/dist/darwin-amd64/"
     print_success "macOS build complete"
     echo ""
 }
