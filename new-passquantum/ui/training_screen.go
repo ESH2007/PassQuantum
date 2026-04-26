@@ -55,30 +55,41 @@ func ShowTrainingScreen(w fyne.Window, guard *FaceGuard, onComplete func()) {
 	// the handler at construction time, so we rebuild it once we have all refs).
 	startBtn = CreateNeonButton("[ START REGISTRATION ]", func() {
 		// Disable the button immediately so it cannot be tapped twice.
-		// CreateNeonButton returns a fyne.CanvasObject (a container), so we
-		// walk the object tree to disable the underlying *widget.Button.
 		disableNeonButton(startBtn)
 
 		// Wire callbacks before sending START_TRAINING so no messages are missed.
+		// All three callbacks are invoked from the Listen() goroutine, so every
+		// Fyne UI operation must be dispatched via fyne.Do().
 		guard.OnFrame = func(img image.Image) {
-			camImage.Image = img
-			camImage.Refresh()
+			fyne.Do(func() {
+				camImage.Image = img
+				camImage.Refresh()
+			})
 		}
 
 		guard.OnProgress = func(cur, total int) {
-			progressBar.SetValue(float64(cur))
-			updateCanvasText(statusLabel, fmt.Sprintf("Capturing sample %d / %d …", cur, total))
+			fyne.Do(func() {
+				progressBar.SetValue(float64(cur))
+				updateCanvasText(statusLabel, fmt.Sprintf("Capturing sample %d / %d …", cur, total))
+			})
 		}
 
 		guard.OnDone = func() {
-			updateCanvasText(statusLabel, "✓ Registration complete")
+			// SendCommand is safe to call here — Python is already connected
+			// (it just sent TRAINING_DONE), so this write is non-blocking.
 			guard.SendCommand("START_MONITOR")
-			guard.OnFrame = nil
-			onComplete()
+			fyne.Do(func() {
+				updateCanvasText(statusLabel, "✓ Registration complete")
+				guard.OnFrame = nil
+				onComplete()
+			})
 		}
 
-		updateCanvasText(statusLabel, "Starting webcam …")
-		guard.SendCommand("START_TRAINING")
+		updateCanvasText(statusLabel, "Starting webcam …  (may take a few seconds)")
+		// Run in a goroutine: SendCommand blocks until Python connects, which can
+		// take several seconds while face_recognition imports.  Blocking here
+		// would freeze the Fyne UI thread.
+		go guard.SendCommand("START_TRAINING")
 	}, 280, 48)
 
 	// ── Layout ─────────────────────────────────────────────────────

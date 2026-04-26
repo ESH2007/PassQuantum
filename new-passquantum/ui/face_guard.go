@@ -30,6 +30,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ==============================
@@ -48,8 +49,9 @@ const (
 
 // FaceGuard manages the face recognition subprocess and the TCP connection it uses.
 type FaceGuard struct {
-	listener net.Listener
-	conn     net.Conn
+	listener  net.Listener
+	conn      net.Conn
+	connReady chan struct{} // closed by Listen() once Python has connected
 
 	// OnFrame is called on the Go main goroutine with each decoded JPEG frame
 	// received during training.  May be nil.
@@ -79,7 +81,7 @@ func NewFaceGuard() (*FaceGuard, error) {
 	if err != nil {
 		return nil, fmt.Errorf("face guard: failed to listen on %s: %w", faceGuardAddr, err)
 	}
-	return &FaceGuard{listener: ln}, nil
+	return &FaceGuard{listener: ln, connReady: make(chan struct{})}, nil
 }
 
 // ==============================
@@ -119,11 +121,18 @@ func buildPythonCommand(script string) (*exec.Cmd, error) {
 // ==============================
 
 // SendCommand writes a newline-terminated command to the connected Python process.
-// It is safe to call before Listen() has accepted a connection only if conn is non-nil.
+// If Python has not yet connected, it blocks until the connection is ready (up to
+// 30 seconds) so that callers don't need to poll.  Always invoke from a goroutine
+// when calling from a Fyne tap handler to avoid blocking the UI thread.
 func (g *FaceGuard) SendCommand(cmd string) {
 	if g.conn == nil {
-		log.Printf("[FaceGuard] SendCommand(%q): no connection yet", cmd)
-		return
+		select {
+		case <-g.connReady:
+			// Python connected — fall through to send
+		case <-time.After(30 * time.Second):
+			log.Printf("[FaceGuard] SendCommand(%q): timed out waiting for Python connection", cmd)
+			return
+		}
 	}
 	if _, err := fmt.Fprintf(g.conn, "%s\n", cmd); err != nil {
 		log.Printf("[FaceGuard] SendCommand(%q) error: %v", cmd, err)
@@ -149,9 +158,11 @@ func (g *FaceGuard) Listen() {
 	conn, err := g.listener.Accept()
 	if err != nil {
 		log.Printf("[FaceGuard] Accept error: %v", err)
+		close(g.connReady) // unblock any SendCommand waiting on connection
 		return
 	}
 	g.conn = conn
+	close(g.connReady) // signal: Python is connected, SendCommand may proceed
 	log.Printf("[FaceGuard] Python connected from %s", conn.RemoteAddr())
 
 	scanner := bufio.NewScanner(conn)
