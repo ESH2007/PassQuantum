@@ -1,11 +1,11 @@
 {
   "format_version": 1,
-  "private_key_fingerprint": "S8Uyfs2NBmjDkmeSIHSlRyXJYb2hKpxhskA7VVgX6GA=",
+  "private_key_fingerprint": "DudcEscxT82tGpfghjQLYuZYCZviyWZgtUkSlpLEqx8=",
   "kdf_params": {
-    "Salt": "7Ut3SDkzxE7MrVCwdug0WQ==",
+    "Salt": "0mGc/6M9GqHS9+pcy8WKzQ==",
     "Memory": 65536,
     "Iterations": 1,
     "Parallelism": 4
   },
-  "verifier": "upsMixc4mp8dD12nuCfVhlJg/w1R4PYBuYlcrez/3P0="
+  "verifier": "KJFAKLfEF87un04V0dtR/ZACq483zHYP4WJBrCMmAUg="
 }

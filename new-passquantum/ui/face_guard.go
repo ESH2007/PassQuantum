@@ -147,13 +147,32 @@ func (g *FaceGuard) Launch() error {
 
 // buildPythonCommand constructs an *exec.Cmd for face_guard.py, preferring python3.
 // The script is resolved relative to the executable first (production), then cwd (dev).
+//
+// When a PyInstaller bundle was embedded at build time, python_bundle.go's init()
+// sets PASSQUANTUM_FACE_GUARD_BUNDLE to the extracted executable path.  In that case
+// the bundle is run directly — no Python interpreter is required on the target machine.
 func buildPythonCommand(script string) (*exec.Cmd, error) {
+	// ── Embedded PyInstaller bundle (set by python_bundle.go init) ──────────
+	if bundlePath := os.Getenv("PASSQUANTUM_FACE_GUARD_BUNDLE"); bundlePath != "" {
+		if _, err := os.Stat(bundlePath); err == nil {
+			cmd := exec.Command(bundlePath)
+			// Store face_data.npy next to the PassQuantum executable, not in /tmp.
+			if workDir := os.Getenv("PASSQUANTUM_WORK_DIR"); workDir != "" {
+				cmd.Dir = workDir
+			} else {
+				cmd.Dir = filepath.Dir(bundlePath)
+			}
+			return cmd, nil
+		}
+	}
+
+	// ── Fallback: call Python interpreter with face_guard.py ─────────────────
 	scriptPath := resolveScript(script)
 
-	for _, interp := range []string{"python", "python"} {
+	for _, interp := range []string{"python3", "python"} {
 		if interpPath, err := exec.LookPath(interp); err == nil {
 			cmd := exec.Command(interpPath, scriptPath)
-			// Run from the script's own directory so face_data.pkl resolves correctly.
+			// Run from the script's own directory so face_data.npy resolves correctly.
 			cmd.Dir = filepath.Dir(scriptPath)
 			return cmd, nil
 		}

@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """
-face_guard.py — PassQuantum Face Recognition Guard
-===================================================
+face_guard.py — PassQuantum Face Recognition Guard (MediaPipe edition)
+=======================================================================
 Runs as a child process launched by the Go app.
 Communicates with Go via a persistent TCP connection on localhost:9876.
+
+Internals now use MediaPipe Tasks FaceLandmarker + geometric encoding
+instead of dlib / face_recognition.  The wire protocol to Go is unchanged.
 
 Protocol (Python → Go):
   FRAME:<base64-encoded JPEG>       — live camera frame (training mode only)
@@ -19,17 +22,16 @@ Protocol (Go → Python):
 
 import base64
 import os
-import pickle
 import socket
 import sys
 import time
 from datetime import datetime
-from io import BytesIO
 from typing import List, Optional, Tuple
 
 import cv2
-import face_recognition
 import numpy as np
+
+from geometric_encoder import Encoder
 
 # ==============================
 # Constants
@@ -37,17 +39,16 @@ import numpy as np
 
 HOST = "127.0.0.1"
 PORT = 9876
-TOLERANCE = 0.45
+SIMILARITY_THRESHOLD = 0.92    # cosine similarity; replaces old L2 TOLERANCE
 GRACE_SECONDS = 5.0
 CAPTURE_SAMPLES = 20
 CONNECT_RETRIES = 10
-CONNECT_RETRY_DELAY = 0.5   # seconds
-MONITOR_INTERVAL = 0.1      # seconds (100 ms)
-FACE_DATA_FILE = "face_data.pkl"
-FRAME_QUALITY = 60          # JPEG quality for FRAME messages
+CONNECT_RETRY_DELAY = 0.5      # seconds
+MONITOR_INTERVAL = 0.1         # seconds (100 ms)
+FACE_DATA_FILE = "face_data.npy"   # numpy binary; replaces face_data.pkl
+FRAME_QUALITY = 60             # JPEG quality for FRAME messages
 FRAME_WIDTH = 320
 FRAME_HEIGHT = 240
-DETECT_SCALE = 0.5          # resize factor for HOG detection (faster)
 
 # ==============================
 # Logging Helpers
@@ -113,35 +114,15 @@ def read_frame(cap: cv2.VideoCapture) -> Optional[np.ndarray]:
 
 
 # ==============================
-# Face Detection
+# Cosine similarity
 # ==============================
 
-def detect_faces_in_frame(
-    frame_bgr: np.ndarray,
-) -> Tuple[List[Tuple[int, int, int, int]], List[np.ndarray]]:
-    """
-    Detect faces using HOG model at DETECT_SCALE resolution.
-    Returns (locations_full_scale, encodings).
-    Locations are scaled back to the original frame dimensions.
-    """
-    small = cv2.resize(frame_bgr, (0, 0), fx=DETECT_SCALE, fy=DETECT_SCALE)
-    rgb_small = cv2.cvtColor(small, cv2.COLOR_BGR2RGB)
-
-    locs_small = face_recognition.face_locations(rgb_small, model="hog")
-    encodings = face_recognition.face_encodings(rgb_small, locs_small)
-
-    # Scale bounding boxes back to original frame size
-    inv = 1.0 / DETECT_SCALE
-    locs_full = [
-        (
-            int(top * inv),
-            int(right * inv),
-            int(bottom * inv),
-            int(left * inv),
-        )
-        for top, right, bottom, left in locs_small
-    ]
-    return locs_full, encodings
+def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
+    if norm_a < 1e-9 or norm_b < 1e-9:
+        return 0.0
+    return float(np.dot(a, b) / (norm_a * norm_b))
 
 
 # ==============================
@@ -163,22 +144,21 @@ def encode_frame_b64(frame_bgr: np.ndarray) -> str:
 
 
 # ==============================
-# Persistence
+# Persistence  (numpy instead of pickle)
 # ==============================
 
 def save_encodings(encodings: List[np.ndarray]) -> None:
-    """Persist face encodings to FACE_DATA_FILE using pickle."""
-    with open(FACE_DATA_FILE, "wb") as f:
-        pickle.dump(encodings, f)
+    """Persist face encodings to FACE_DATA_FILE as a numpy array."""
+    np.save(FACE_DATA_FILE, np.stack(encodings))
     log(f"Saved {len(encodings)} face encodings to {FACE_DATA_FILE}.")
 
 
 def load_encodings() -> List[np.ndarray]:
     """Load face encodings from FACE_DATA_FILE."""
-    with open(FACE_DATA_FILE, "rb") as f:
-        data = pickle.load(f)
-    log(f"Loaded {len(data)} face encodings from {FACE_DATA_FILE}.")
-    return data
+    arr = np.load(FACE_DATA_FILE)
+    encodings = [arr[i] for i in range(len(arr))]
+    log(f"Loaded {len(encodings)} face encodings from {FACE_DATA_FILE}.")
+    return encodings
 
 
 # ==============================
@@ -192,7 +172,7 @@ def run_training(sock: socket.socket, reader) -> None:
       2. Open webcam, capture CAPTURE_SAMPLES face samples.
       3. For every frame (face or not), send FRAME:<b64>.
       4. Each time a sample is saved, send PROGRESS:N/TOTAL.
-      5. After all samples collected, save to face_data.pkl, send TRAINING_DONE.
+      5. After all samples collected, save to face_data.npy, send TRAINING_DONE.
       6. Wait for START_MONITOR before returning.
     """
     log("Waiting for START_TRAINING command...")
@@ -204,6 +184,7 @@ def run_training(sock: socket.socket, reader) -> None:
 
     log("Training mode started.")
     cap = open_camera()
+    encoder = Encoder()
     known_encodings: List[np.ndarray] = []
 
     try:
@@ -214,24 +195,27 @@ def run_training(sock: socket.socket, reader) -> None:
                 time.sleep(0.05)
                 continue
 
-            locs, encodings = detect_faces_in_frame(frame)
+            vec  = encoder.encode(frame)
+            bbox = encoder.bounding_box(frame)
 
-            # Draw a green rectangle around the first detected face
+            # Draw a green rectangle around the detected face
             display_frame = frame.copy()
-            for top, right, bottom, left in locs:
-                cv2.rectangle(display_frame, (left, top), (right, bottom), (0, 255, 0), 2)
+            if bbox is not None:
+                x1, y1, x2, y2 = bbox
+                cv2.rectangle(display_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
             # Always send the frame (with rectangle if face found)
             b64 = encode_frame_b64(display_frame)
             if b64:
                 send_line(sock, f"FRAME:{b64}")
 
-            # Save the first face encoding in this frame
-            if encodings:
-                known_encodings.append(encodings[0])
+            # Save the encoding when a face is detected
+            if vec is not None:
+                known_encodings.append(vec)
                 log(f"Sample {len(known_encodings)}/{CAPTURE_SAMPLES} captured.")
                 send_line(sock, f"PROGRESS:{len(known_encodings)}/{CAPTURE_SAMPLES}")
     finally:
+        encoder.close()
         cap.release()
 
     save_encodings(known_encodings)
@@ -253,7 +237,7 @@ def run_monitor(sock: socket.socket, reader, known_encodings: List[np.ndarray]) 
     """
     Monitor mode:
       - Loop every MONITOR_INTERVAL seconds.
-      - Detect faces; compare against known_encodings with TOLERANCE.
+      - Detect faces; compare against known_encodings using cosine similarity.
       - If no known face seen for GRACE_SECONDS, send FACE_LOST (once per absence).
       - When known face returns after a FACE_LOST event, send FACE_OK.
       - Does NOT send FRAME messages.
@@ -267,6 +251,7 @@ def run_monitor(sock: socket.socket, reader, known_encodings: List[np.ndarray]) 
 
     log("Monitor mode started.")
     cap = open_camera()
+    encoder = Encoder()
     last_seen: float = time.time()
     face_lost_sent: bool = False
 
@@ -278,14 +263,14 @@ def run_monitor(sock: socket.socket, reader, known_encodings: List[np.ndarray]) 
                 time.sleep(MONITOR_INTERVAL)
                 continue
 
-            _, encodings = detect_faces_in_frame(frame)
+            vec = encoder.encode(frame)
 
             face_found = False
-            for encoding in encodings:
-                distances = face_recognition.face_distance(known_encodings, encoding)
-                if len(distances) > 0 and np.min(distances) <= TOLERANCE:
-                    face_found = True
-                    break
+            if vec is not None:
+                for known in known_encodings:
+                    if _cosine_similarity(vec, known) >= SIMILARITY_THRESHOLD:
+                        face_found = True
+                        break
 
             now = time.time()
             if face_found:
@@ -304,6 +289,7 @@ def run_monitor(sock: socket.socket, reader, known_encodings: List[np.ndarray]) 
 
             time.sleep(MONITOR_INTERVAL)
     finally:
+        encoder.close()
         cap.release()
 
 
@@ -334,3 +320,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

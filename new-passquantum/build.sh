@@ -8,6 +8,8 @@ cd "$SCRIPT_DIR"
 
 APP_NAME="PassQuantum"
 BUILD_DIR="build"
+PYTHON_BUNDLE_OUT="ui/face_guard_bundle"   # go:embed source (built by PyInstaller)
+VENV_PYTHON=".venv/bin/python"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -32,6 +34,10 @@ print_error() {
     echo -e "${RED}ERR${NC} $1"
 }
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Dependency checks
+# ──────────────────────────────────────────────────────────────────────────────
+
 check_dependencies() {
     print_header "Checking Dependencies"
 
@@ -49,11 +55,94 @@ check_dependencies() {
     echo ""
 }
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Python bundle (PyInstaller --onefile)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# build_python_bundle compiles all Python files into a single self-contained
+# executable at $PYTHON_BUNDLE_OUT using PyInstaller.  The models/ directory
+# is included via --add-data so face_landmarker.task is available at runtime.
+#
+# Returns 0 on success, 1 on failure.  build_linux() checks the return code
+# and falls back to copying .py files if bundling fails.
+build_python_bundle() {
+    print_header "Building Python Bundle (PyInstaller)"
+
+    # Require the project venv
+    if [[ ! -x "$VENV_PYTHON" ]]; then
+        print_error "Python venv not found at .venv — run:"
+        print_info  "  python3 -m venv .venv && .venv/bin/pip install -r requirements.txt"
+        return 1
+    fi
+
+    # Install PyInstaller into the venv if not already present
+    if ! "$VENV_PYTHON" -c "import PyInstaller" 2>/dev/null; then
+        print_info "Installing PyInstaller into .venv..."
+        .venv/bin/pip install --quiet pyinstaller
+    fi
+
+    # Wipe previous artefacts so a stale bundle cannot be embedded
+    rm -f "$PYTHON_BUNDLE_OUT"
+
+    print_info "Running PyInstaller..."
+    "$VENV_PYTHON" -m PyInstaller \
+        --onefile \
+        --name face_guard_bundle \
+        --distpath "$(dirname "$PYTHON_BUNDLE_OUT")" \
+        --workpath /tmp/passquantum_pyinstaller_work \
+        --specpath /tmp/passquantum_pyinstaller_spec \
+        --add-data "$SCRIPT_DIR/models:models" \
+        --collect-all mediapipe \
+        --hidden-import cv2 \
+        --hidden-import numpy \
+        --noconfirm \
+        --clean \
+        face_guard.py
+
+    if [[ ! -f "$PYTHON_BUNDLE_OUT" ]]; then
+        print_error "PyInstaller did not produce $PYTHON_BUNDLE_OUT"
+        return 1
+    fi
+
+    local size
+    size=$(du -sh "$PYTHON_BUNDLE_OUT" | cut -f1)
+    print_success "Python bundle ready: $PYTHON_BUNDLE_OUT ($size)"
+    echo ""
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Platform builds
+# ──────────────────────────────────────────────────────────────────────────────
+
 build_linux() {
     print_header "Building for Linux (AMD64)"
     mkdir -p "$BUILD_DIR/linux"
-    CGO_ENABLED=1 go build -o "$BUILD_DIR/linux/$APP_NAME" ./ui
-    cp face_guard.py "$BUILD_DIR/linux/"
+
+    local go_tags=""
+
+    # Attempt to embed the Python bundle into the Go binary
+    if build_python_bundle; then
+        go_tags="-tags with_face_bundle"
+        print_info "Building Go binary with embedded Python bundle..."
+    else
+        print_info "Python bundle unavailable — copying .py files instead..."
+    fi
+
+    # shellcheck disable=SC2086
+    CGO_ENABLED=1 go build $go_tags -o "$BUILD_DIR/linux/$APP_NAME" ./ui
+
+    if [[ -z "$go_tags" ]]; then
+        # Fallback: ship .py files and the models directory alongside the binary
+        cp face_guard.py geometric_encoder.py liveness_detector.py \
+           face_authenticator.py "$BUILD_DIR/linux/"
+        cp -r models "$BUILD_DIR/linux/"
+        print_info "Copied Python source files to $BUILD_DIR/linux/"
+    else
+        # Bundle is embedded; clean up the temporary artefact from ui/
+        rm -f "$PYTHON_BUNDLE_OUT"
+        print_info "Python bundle embedded — no separate .py files needed."
+    fi
+
     print_success "Linux build complete: $BUILD_DIR/linux/$APP_NAME"
     echo ""
 }
@@ -71,7 +160,10 @@ build_windows() {
         return 1
     fi
 
-    cp face_guard.py "fyne-cross/dist/windows-amd64/"
+    # PyInstaller cannot cross-compile; ship .py files for Windows
+    cp face_guard.py geometric_encoder.py liveness_detector.py \
+       face_authenticator.py "fyne-cross/dist/windows-amd64/"
+    cp -r models "fyne-cross/dist/windows-amd64/"
     print_success "Windows build complete"
     echo ""
 }
@@ -97,10 +189,17 @@ build_macos() {
         return 1
     fi
 
-    cp face_guard.py "fyne-cross/dist/darwin-amd64/"
+    # PyInstaller cannot cross-compile; ship .py files for macOS
+    cp face_guard.py geometric_encoder.py liveness_detector.py \
+       face_authenticator.py "fyne-cross/dist/darwin-amd64/"
+    cp -r models "fyne-cross/dist/darwin-amd64/"
     print_success "macOS build complete"
     echo ""
 }
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Aggregate targets
+# ──────────────────────────────────────────────────────────────────────────────
 
 build_all() {
     check_dependencies
@@ -118,11 +217,18 @@ build_all() {
     echo "Build process completed."
     echo ""
     echo "Build artifacts:"
-    echo "  - Linux native: build/linux/$APP_NAME"
-    echo "  - Windows: fyne-cross/dist/windows-amd64/"
-    echo "  - macOS: fyne-cross/dist/darwin-amd64/"
+    echo "  - Linux (self-contained): build/linux/$APP_NAME"
+    echo "  - Windows:                fyne-cross/dist/windows-amd64/"
+    echo "  - macOS:                  fyne-cross/dist/darwin-amd64/"
+    echo ""
+    echo "Note: The Linux binary embeds the Python runtime via PyInstaller."
+    echo "      Windows and macOS distributions still require Python + .py files."
     echo ""
 }
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Entry point
+# ──────────────────────────────────────────────────────────────────────────────
 
 show_usage() {
     echo "PassQuantum Build Script"
@@ -130,10 +236,11 @@ show_usage() {
     echo "Usage: ./build.sh [option]"
     echo ""
     echo "Options:"
-    echo "  all      - Native Linux build + best-effort cross builds"
-    echo "  linux    - Build native Linux binary only"
+    echo "  all      - Native Linux build (with embedded Python) + best-effort cross builds"
+    echo "  linux    - Build native Linux binary only (with embedded Python)"
     echo "  windows  - Build for Windows only"
     echo "  mac      - Build for macOS only"
+    echo "  bundle   - Build Python bundle only (output: $PYTHON_BUNDLE_OUT)"
     echo "  deps     - Install build dependencies only"
     echo "  help     - Show this help message"
     echo ""
@@ -158,6 +265,9 @@ case "${1:-all}" in
         check_dependencies
         build_macos
         ;;
+    bundle)
+        build_python_bundle
+        ;;
     deps|dependencies)
         check_dependencies
         ;;
@@ -171,3 +281,4 @@ case "${1:-all}" in
         exit 1
         ;;
 esac
+
