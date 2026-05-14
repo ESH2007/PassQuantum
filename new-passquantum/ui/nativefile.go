@@ -1,0 +1,35 @@
+package main
+
+import (
+	"errors"
+
+	"fyne.io/fyne/v2"
+	"github.com/ncruces/zenity"
+)
+
+// imageFileFilters are the OS-native filter patterns accepted by the two image
+// pickers (icon and theme palette).
+var imageFileFilters = []zenity.FileFilter{
+	{Name: "Images (PNG / JPEG)", Patterns: []string{"*.png", "*.jpg", "*.jpeg"}, CaseFold: true},
+}
+
+// pickImageFile opens the OS-native file dialog in a background goroutine and
+// calls onPicked(path) on the Fyne goroutine when the user confirms a choice.
+// If the user cancels, onPicked is not called.  Any non-cancel error is passed
+// to onErr (also on the Fyne goroutine).
+func pickImageFile(title string, onPicked func(path string), onErr func(err error)) {
+	go func() {
+		path, err := zenity.SelectFile(
+			zenity.Title(title),
+			zenity.FileFilters(imageFileFilters),
+		)
+		if err != nil {
+			if errors.Is(err, zenity.ErrCanceled) {
+				return
+			}
+			fyne.Do(func() { onErr(err) })
+			return
+		}
+		fyne.Do(func() { onPicked(path) })
+	}()
+}

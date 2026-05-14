@@ -17,7 +17,9 @@ on:
 jobs:
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Linux native build  (mirrors: CGO_ENABLED=1 go build ./ui)
+  # Linux native build  (mirrors: build.sh linux)
+  # PyInstaller bundles the Python face-guard into the Go binary via
+  # go:embed + the "with_face_bundle" build tag.
   # ──────────────────────────────────────────────────────────────────────────
   build-linux:
     name: Build — Linux (amd64)
@@ -27,12 +29,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Go ${{ '1.22' }}
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
           cache: true
           cache-dependency-path: new-passquantum/go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
       - name: Install Fyne CGO dependencies
         run: |
@@ -46,17 +53,40 @@ jobs:
             libxi-dev \
             libxxf86vm-dev
 
-      - name: Build Linux binary
+      - name: Install Python dependencies + PyInstaller
         working-directory: new-passquantum
-        run: CGO_ENABLED=1 go build -v -o build/linux/PassQuantum ./ui
+        run: |
+          pip install --quiet -r requirements.txt pyinstaller
+
+      - name: Build Python bundle with PyInstaller
+        working-directory: new-passquantum
+        run: |
+          python -m PyInstaller \
+            --onefile \
+            --name face_guard_bundle \
+            --distpath ui \
+            --workpath /tmp/passquantum_pyinstaller_work \
+            --specpath /tmp/passquantum_pyinstaller_spec \
+            --add-data "models:models" \
+            --collect-all mediapipe \
+            --hidden-import cv2 \
+            --hidden-import numpy \
+            --noconfirm \
+            --clean \
+            face_guard.py
+
+      - name: Build Linux binary (with embedded Python bundle)
+        working-directory: new-passquantum
+        run: |
+          mkdir -p build/linux
+          CGO_ENABLED=1 go build -tags with_face_bundle -v \
+            -o build/linux/PassQuantum ./ui
 
       - name: Upload Linux artifact
         uses: actions/upload-artifact@v4
         with:
           name: PassQuantum-linux-amd64
-          path: |
-            new-passquantum/build/linux/PassQuantum
-            new-passquantum/face_guard.py
+          path: new-passquantum/build/linux/PassQuantum
           if-no-files-found: error
 
   # ──────────────────────────────────────────────────────────────────────────
@@ -91,9 +121,14 @@ jobs:
             -icon=Icon.png \
             ./ui
 
-      - name: Copy face_guard.py into Windows dist
+      - name: Copy Python source files into Windows dist
         working-directory: new-passquantum
-        run: cp face_guard.py fyne-cross/dist/windows-amd64/
+        run: |
+          mkdir -p fyne-cross/dist/windows-amd64/PassQuantum_AppData
+          cp face_guard.py geometric_encoder.py liveness_detector.py \
+             face_authenticator.py \
+             fyne-cross/dist/windows-amd64/PassQuantum_AppData/
+          cp -r models fyne-cross/dist/windows-amd64/PassQuantum_AppData/
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4

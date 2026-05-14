@@ -6,6 +6,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
+# Ensure Go-installed binaries (fyne, fyne-cross, …) are reachable.
+export PATH="$(go env GOPATH)/bin:$PATH"
+
 APP_NAME="PassQuantum"
 BUILD_DIR="build"
 PYTHON_BUNDLE_OUT="ui/face_guard_bundle"   # go:embed source (built by PyInstaller)
@@ -111,6 +114,91 @@ build_python_bundle() {
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Python bundle for Windows (PyInstaller inside a Docker + Wine container)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# build_python_bundle_windows produces a Windows PE executable
+# (face_guard_bundle.exe) using PyInstaller running inside the tobix/pywine
+# Docker image — Python 3 pre-installed inside Wine, no host Wine required.
+#
+# Prerequisites on the build machine:
+#   • Docker (already required by fyne-cross)
+#
+# The Docker image used can be overridden:
+#   PYWINE_IMAGE="tobix/pywine:3.11"   (default)
+#
+# At runtime on Windows the Go binary looks for the bundle at:
+#   %APPDATA%\PassQuantum\face_guard_bundle.exe
+# Ship the produced .exe via an installer (NSIS/Inno Setup) targeting that path.
+#
+# Returns 0 on success, non-zero on failure.
+build_python_bundle_windows() {
+    print_header "Building Windows Python Bundle (PyInstaller via Docker + Wine)"
+
+    local win_dist="fyne-cross/dist/windows-amd64"
+    mkdir -p "$win_dist"
+
+    local pywine_image="${PYWINE_IMAGE:-tobix/pywine:3.11}"
+
+    # ── sanity check ───────────────────────────────────────────────────────────
+    if ! command -v docker >/dev/null 2>&1; then
+        print_error "docker not found — cannot build Windows Python bundle."
+        print_info  "Docker is already required by fyne-cross; install it and retry."
+        return 1
+    fi
+
+    # Pull the image (no-op if already cached)
+    print_info "Pulling Docker image: $pywine_image"
+    if ! docker pull "$pywine_image" 2>&1; then
+        print_error "Could not pull $pywine_image"
+        return 1
+    fi
+
+    rm -f "$win_dist/face_guard_bundle.exe"
+
+    # ── run PyInstaller inside the container ───────────────────────────────────
+    # The container's Wine Python lives at /wine/bin/python.
+    # /src  → project root (read-only source)
+    # /dist → output directory (writable, mapped to win_dist on the host)
+    #
+    # --add-data uses ';' as the separator (Windows convention).
+    # Inside the container, /src/models maps to Z:\src\models in Wine.
+    print_info "Running PyInstaller inside $pywine_image..."
+    docker run --rm \
+        -v "$SCRIPT_DIR:/src:ro" \
+        -v "$(realpath "$win_dist"):/dist" \
+        -w /src \
+        "$pywine_image" \
+        bash -c '
+            set -euo pipefail
+            wine python -m pip install --quiet pyinstaller mediapipe opencv-python-headless numpy
+            wine python -m PyInstaller \
+                --onefile \
+                --name face_guard_bundle \
+                --distpath /dist \
+                --workpath /tmp/pq_win_work \
+                --specpath /tmp/pq_win_spec \
+                --add-data "Z:\\src\\models;models" \
+                --collect-all mediapipe \
+                --hidden-import cv2 \
+                --hidden-import numpy \
+                --noconfirm \
+                --clean \
+                face_guard.py
+        '
+
+    if [[ ! -f "$win_dist/face_guard_bundle.exe" ]]; then
+        print_error "PyInstaller did not produce face_guard_bundle.exe"
+        return 1
+    fi
+
+    local size
+    size=$(du -sh "$win_dist/face_guard_bundle.exe" | cut -f1)
+    print_success "Windows Python bundle: $win_dist/face_guard_bundle.exe ($size)"
+    echo ""
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
 # Platform builds
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -160,10 +248,29 @@ build_windows() {
         return 1
     fi
 
-    # PyInstaller cannot cross-compile; ship .py files for Windows
-    cp face_guard.py geometric_encoder.py liveness_detector.py \
-       face_authenticator.py "fyne-cross/dist/windows-amd64/"
-    cp -r models "fyne-cross/dist/windows-amd64/"
+    local win_dist="fyne-cross/dist/windows-amd64"
+
+    # Attempt to build a self-contained Windows Python bundle via PyInstaller/Wine.
+    # On success, face_guard_bundle.exe lands in $win_dist alongside the Go binary.
+    # At install time it must be placed in %APPDATA%\PassQuantum\ on the target.
+    if build_python_bundle_windows; then
+        print_info "Bundle built. At install time place face_guard_bundle.exe in:"
+        print_info "  %APPDATA%\\PassQuantum\\face_guard_bundle.exe"
+    else
+        # Fallback: ship Python source files in a dedicated AppData subfolder.
+        # The contents of PassQuantum_AppData/ must be copied to
+        # %APPDATA%\PassQuantum\ on the target machine (e.g. by an NSIS installer).
+        print_info "Wine/PyInstaller unavailable — copying .py source files as fallback."
+        local appdata_dir="$win_dist/PassQuantum_AppData"
+        mkdir -p "$appdata_dir"
+        cp face_guard.py geometric_encoder.py liveness_detector.py \
+           face_authenticator.py "$appdata_dir/"
+        cp -r models "$appdata_dir/"
+        print_info "Copied Python source files to $win_dist/PassQuantum_AppData/"
+        print_info "At install time place the contents of PassQuantum_AppData/ in:"
+        print_info "  %APPDATA%\\PassQuantum\\"
+    fi
+
     print_success "Windows build complete"
     echo ""
 }
@@ -222,7 +329,11 @@ build_all() {
     echo "  - macOS:                  fyne-cross/dist/darwin-amd64/"
     echo ""
     echo "Note: The Linux binary embeds the Python runtime via PyInstaller."
-    echo "      Windows and macOS distributions still require Python + .py files."
+    echo "      Windows uses PyInstaller via Wine (face_guard_bundle.exe) when Wine is"
+    echo "      available, otherwise falls back to .py source files."
+    echo "      Either way, the Python files must be placed in %APPDATA%\\PassQuantum\\"
+    echo "      on the target Windows machine (e.g. via an NSIS/Inno Setup installer)."
+    echo "      macOS distributions still require Python + .py files."
     echo ""
 }
 
@@ -238,7 +349,7 @@ show_usage() {
     echo "Options:"
     echo "  all      - Native Linux build (with embedded Python) + best-effort cross builds"
     echo "  linux    - Build native Linux binary only (with embedded Python)"
-    echo "  windows  - Build for Windows only"
+    echo "  windows  - Build for Windows only (PyInstaller via Wine, falls back to .py files)"
     echo "  mac      - Build for macOS only"
     echo "  bundle   - Build Python bundle only (output: $PYTHON_BUNDLE_OUT)"
     echo "  deps     - Install build dependencies only"
@@ -246,6 +357,8 @@ show_usage() {
     echo ""
     echo "Environment overrides:"
     echo "  MACOSX_SDK_PATH=...    Override macOS SDK path"
+    echo "  PYWINE_IMAGE=...       Docker image used to build the Windows Python bundle"
+    echo "                         (default: 'tobix/pywine:3.11')"
     echo ""
 }
 

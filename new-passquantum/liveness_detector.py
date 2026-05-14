@@ -127,6 +127,16 @@ class LivenessDetector:
 
         return avg_ear
 
+    def reset(self) -> None:
+        """Reset the blink counter and EAR state without recreating the landmarker.
+
+        _timestamp_ms is intentionally NOT reset — MediaPipe VIDEO mode requires
+        strictly monotonically increasing timestamps across the lifetime of the
+        landmarker instance.
+        """
+        self.blink_count = 0
+        self._below_count = 0
+
     def close(self) -> None:
         """Release the underlying FaceLandmarker."""
         self._landmarker.close()

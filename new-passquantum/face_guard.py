@@ -32,6 +32,7 @@ import cv2
 import numpy as np
 
 from geometric_encoder import Encoder
+from liveness_detector import LivenessDetector
 
 # ==============================
 # Constants
@@ -39,20 +40,23 @@ from geometric_encoder import Encoder
 
 HOST = "127.0.0.1"
 PORT = 9876
-SIMILARITY_THRESHOLD = 0.92    # cosine similarity; replaces old L2 TOLERANCE
+SIMILARITY_THRESHOLD = 0.92  # cosine similarity; replaces old L2 TOLERANCE
 GRACE_SECONDS = 5.0
-CAPTURE_SAMPLES = 20
+CAPTURE_SAMPLES = 100
 CONNECT_RETRIES = 10
-CONNECT_RETRY_DELAY = 0.5      # seconds
-MONITOR_INTERVAL = 0.1         # seconds (100 ms)
-FACE_DATA_FILE = "face_data.npy"   # numpy binary; replaces face_data.pkl
-FRAME_QUALITY = 60             # JPEG quality for FRAME messages
+CONNECT_RETRY_DELAY = 0.5  # seconds
+MONITOR_INTERVAL = 0.1  # seconds (100 ms)
+FACE_DATA_FILE = "face_data.npy"  # numpy binary; replaces face_data.pkl
+FRAME_QUALITY = 60  # JPEG quality for FRAME messages
 FRAME_WIDTH = 320
 FRAME_HEIGHT = 240
+LIVENESS_BLINKS_REQUIRED = 1    # blinks needed to pass anti-spoofing check
+LIVENESS_WINDOW_SECONDS  = 10.0 # seconds allowed per liveness gate attempt
 
 # ==============================
 # Logging Helpers
 # ==============================
+
 
 def log(message: str) -> None:
     """Print a timestamped log line to stderr (stdout is reserved for protocol)."""
@@ -63,6 +67,7 @@ def log(message: str) -> None:
 # ==============================
 # Connection
 # ==============================
+
 
 def connect_to_go() -> socket.socket:
     """
@@ -77,7 +82,9 @@ def connect_to_go() -> socket.socket:
             log(f"Connected to Go server on attempt {attempt}")
             return sock
         except ConnectionRefusedError:
-            log(f"Connection attempt {attempt}/{CONNECT_RETRIES} failed — retrying in {CONNECT_RETRY_DELAY}s")
+            log(
+                f"Connection attempt {attempt}/{CONNECT_RETRIES} failed — retrying in {CONNECT_RETRY_DELAY}s"
+            )
             time.sleep(CONNECT_RETRY_DELAY)
     log("ERROR: Could not connect to Go server after all retries. Exiting.")
     sys.exit(1)
@@ -91,6 +98,7 @@ def send_line(sock: socket.socket, message: str) -> None:
 # ==============================
 # Camera Utilities
 # ==============================
+
 
 def open_camera() -> cv2.VideoCapture:
     """Open the default webcam and return a VideoCapture handle."""
@@ -117,6 +125,7 @@ def read_frame(cap: cv2.VideoCapture) -> Optional[np.ndarray]:
 # Cosine similarity
 # ==============================
 
+
 def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     norm_a = np.linalg.norm(a)
     norm_b = np.linalg.norm(b)
@@ -128,6 +137,7 @@ def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 # ==============================
 # Frame Encoding
 # ==============================
+
 
 def encode_frame_b64(frame_bgr: np.ndarray) -> str:
     """
@@ -147,6 +157,7 @@ def encode_frame_b64(frame_bgr: np.ndarray) -> str:
 # Persistence  (numpy instead of pickle)
 # ==============================
 
+
 def save_encodings(encodings: List[np.ndarray]) -> None:
     """Persist face encodings to FACE_DATA_FILE as a numpy array."""
     np.save(FACE_DATA_FILE, np.stack(encodings))
@@ -165,6 +176,7 @@ def load_encodings() -> List[np.ndarray]:
 # Training Mode
 # ==============================
 
+
 def run_training(sock: socket.socket, reader) -> None:
     """
     Training mode:
@@ -172,8 +184,10 @@ def run_training(sock: socket.socket, reader) -> None:
       2. Open webcam, capture CAPTURE_SAMPLES face samples.
       3. For every frame (face or not), send FRAME:<b64>.
       4. Each time a sample is saved, send PROGRESS:N/TOTAL.
-      5. After all samples collected, save to face_data.npy, send TRAINING_DONE.
-      6. Wait for START_MONITOR before returning.
+      5. Continue until BOTH all samples are captured AND liveness is confirmed
+         (at least LIVENESS_BLINKS_REQUIRED blinks detected).
+      6. Save to face_data.npy, send TRAINING_DONE.
+      7. Wait for START_MONITOR before returning.
     """
     log("Waiting for START_TRAINING command...")
     for line in reader:
@@ -185,38 +199,62 @@ def run_training(sock: socket.socket, reader) -> None:
     log("Training mode started.")
     cap = open_camera()
     encoder = Encoder()
+    liveness = LivenessDetector()
     known_encodings: List[np.ndarray] = []
+    _prev_blink_count = 0
 
     try:
-        while len(known_encodings) < CAPTURE_SAMPLES:
+        while (
+            len(known_encodings) < CAPTURE_SAMPLES
+            or liveness.blink_count < LIVENESS_BLINKS_REQUIRED
+        ):
             frame = read_frame(cap)
             if frame is None:
                 log("WARNING: Failed to read frame during training — skipping.")
                 time.sleep(0.05)
                 continue
 
+            # Feed frame to liveness detector; log when a new blink is confirmed
+            liveness.update(frame)
+            if liveness.blink_count != _prev_blink_count:
+                log(
+                    f"Liveness: blink detected "
+                    f"({liveness.blink_count}/{LIVENESS_BLINKS_REQUIRED})"
+                )
+                _prev_blink_count = liveness.blink_count
+
             vec  = encoder.encode(frame)
             bbox = encoder.bounding_box(frame)
 
-            # Draw a green rectangle around the detected face
+            # Rectangle colour: green once liveness is confirmed, orange while pending
             display_frame = frame.copy()
             if bbox is not None:
+                color = (
+                    (0, 255, 0)
+                    if liveness.blink_count >= LIVENESS_BLINKS_REQUIRED
+                    else (0, 165, 255)
+                )
                 x1, y1, x2, y2 = bbox
-                cv2.rectangle(display_frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                cv2.rectangle(display_frame, (x1, y1), (x2, y2), color, 2)
 
             # Always send the frame (with rectangle if face found)
             b64 = encode_frame_b64(display_frame)
             if b64:
                 send_line(sock, f"FRAME:{b64}")
 
-            # Save the encoding when a face is detected
-            if vec is not None:
+            # Save the encoding when a face is detected and we still need samples
+            if vec is not None and len(known_encodings) < CAPTURE_SAMPLES:
                 known_encodings.append(vec)
                 log(f"Sample {len(known_encodings)}/{CAPTURE_SAMPLES} captured.")
                 send_line(sock, f"PROGRESS:{len(known_encodings)}/{CAPTURE_SAMPLES}")
     finally:
+        liveness.close()
         encoder.close()
         cap.release()
+
+    log(
+        f"Training liveness confirmed: {liveness.blink_count} blink(s) detected."
+    )
 
     save_encodings(known_encodings)
     send_line(sock, "TRAINING_DONE")
@@ -233,10 +271,68 @@ def run_training(sock: socket.socket, reader) -> None:
 # Monitor Mode
 # ==============================
 
+
+def _liveness_gate(
+    cap: cv2.VideoCapture,
+    encoder: "Encoder",
+    known_encodings: List[np.ndarray],
+) -> None:
+    """Block until a *recognized* face also passes the liveness check.
+
+    A blink from the recognized face must be detected within
+    LIVENESS_WINDOW_SECONDS.  If the window expires the gate resets and
+    tries again, so the function never returns without confirmation.
+    An unrecognized or absent face also resets the window.
+    """
+    log(
+        f"Liveness gate: please blink within {LIVENESS_WINDOW_SECONDS}s "
+        "to confirm you are live."
+    )
+    liveness = LivenessDetector()
+    gate_start = time.time()
+    try:
+        while True:
+            frame = read_frame(cap)
+            if frame is None:
+                time.sleep(0.05)
+                continue
+
+            vec = encoder.encode(frame)
+            face_known = False
+            if vec is not None:
+                for known in known_encodings:
+                    if _cosine_similarity(vec, known) >= SIMILARITY_THRESHOLD:
+                        face_known = True
+                        break
+
+            if face_known:
+                liveness.update(frame)
+                if liveness.blink_count >= LIVENESS_BLINKS_REQUIRED:
+                    log("Liveness gate passed — face confirmed as live.")
+                    return
+                # Timeout: recognized face present but no blink in time
+                if time.time() - gate_start > LIVENESS_WINDOW_SECONDS:
+                    log(
+                        f"WARNING: Liveness gate timed out after "
+                        f"{LIVENESS_WINDOW_SECONDS}s — restarting gate."
+                    )
+                    liveness.reset()
+                    gate_start = time.time()
+            else:
+                # Unknown or absent face: reset the window
+                if vec is not None:
+                    log("Liveness gate: unrecognized face — resetting gate.")
+                liveness.reset()
+                gate_start = time.time()
+    finally:
+        liveness.close()
+
+
 def run_monitor(sock: socket.socket, reader, known_encodings: List[np.ndarray]) -> None:
     """
     Monitor mode:
-      - Loop every MONITOR_INTERVAL seconds.
+      - Run a liveness gate first (require a blink from the recognized face).
+      - Then loop every MONITOR_INTERVAL seconds.
       - Detect faces; compare against known_encodings using cosine similarity.
       - If no known face seen for GRACE_SECONDS, send FACE_LOST (once per absence).
       - When known face returns after a FACE_LOST event, send FACE_OK.
@@ -252,6 +348,10 @@ def run_monitor(sock: socket.socket, reader, known_encodings: List[np.ndarray]) 
     log("Monitor mode started.")
     cap = open_camera()
     encoder = Encoder()
+
+    # Anti-spoofing: confirm a live, recognized face before entering the main loop
+    _liveness_gate(cap, encoder, known_encodings)
+
     last_seen: float = time.time()
     face_lost_sent: bool = False
 
@@ -297,6 +397,7 @@ def run_monitor(sock: socket.socket, reader, known_encodings: List[np.ndarray]) 
 # Main Entry
 # ==============================
 
+
 def main() -> None:
     log("face_guard.py starting up.")
 
@@ -320,4 +421,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -9,8 +9,6 @@ import (
 	"os"
 
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 
 	"passquantum/palette"
@@ -28,19 +26,15 @@ func ShowThemePicker(a fyne.App, w fyne.Window) {
 }
 
 func showThemePicker(a fyne.App, w fyne.Window, onApplied func()) {
-	fileDialog := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
+	pickImageFile("Select Theme Image", func(path string) {
+		f, err := os.Open(path)
 		if err != nil {
-			ShowAppError(err, w)
+			ShowAppError(fmt.Errorf("could not open image: %w", err), w)
 			return
 		}
-		if reader == nil {
-			return
-		}
-		defer func() {
-			_ = reader.Close()
-		}()
+		defer func() { _ = f.Close() }()
 
-		img, _, decodeErr := image.Decode(reader)
+		img, _, decodeErr := image.Decode(f)
 		if decodeErr != nil {
 			ShowAppError(fmt.Errorf("could not decode image: %w", decodeErr), w)
 			return
@@ -57,16 +51,16 @@ func showThemePicker(a fyne.App, w fyne.Window, onApplied func()) {
 		a.Settings().SetTheme(palette.NewPassQuantumTheme(built))
 		applyThemePaletteToGlobals(built, clusters)
 		clearManualPalettePreferences(a)
-		a.Preferences().SetString(themeImagePathPrefKey, reader.URI().Path())
+		a.Preferences().SetString(themeImagePathPrefKey, path)
 
 		if onApplied != nil {
 			onApplied()
 		} else if w.Content() != nil {
 			w.Content().Refresh()
 		}
-	}, w)
-	fileDialog.SetFilter(storage.NewExtensionFileFilter([]string{".png", ".jpg", ".jpeg"}))
-	fileDialog.Show()
+	}, func(err error) {
+		ShowAppError(err, w)
+	})
 }
 
 func RestoreThemeOnLaunch(a fyne.App, w fyne.Window) {

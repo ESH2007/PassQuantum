@@ -7,7 +7,7 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
-	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -18,7 +18,6 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
@@ -340,27 +339,18 @@ func buildDisplaySettings(w fyne.Window, fyneApp fyne.App, appState *AppState) *
 	}, 250, 40)
 
 	changeIconBtn := CreateNeonButton("CHANGE APP ICON", func() {
-		fd := dialog.NewFileOpen(func(reader fyne.URIReadCloser, err error) {
-			if err != nil {
-				ShowAppError(err, w)
-				return
-			}
-			if reader == nil {
-				return
-			}
-			defer func() { _ = reader.Close() }()
-			data, readErr := io.ReadAll(reader)
+		pickImageFile("Select App Icon", func(path string) {
+			data, readErr := os.ReadFile(path)
 			if readErr != nil || len(data) == 0 {
 				ShowAppError(fmt.Errorf("could not read icon file"), w)
 				return
 			}
-			name := filepath.Base(reader.URI().Path())
-			fyneApp.SetIcon(fyne.NewStaticResource(name, data))
-			fyneApp.Preferences().SetString("custom_icon_path", reader.URI().Path())
+			fyneApp.SetIcon(fyne.NewStaticResource(filepath.Base(path), data))
+			fyneApp.Preferences().SetString("custom_icon_path", path)
 			ShowAppInformation("App Icon", "App icon updated. It will also be applied on next launch.", w)
-		}, w)
-		fd.SetFilter(storage.NewExtensionFileFilter([]string{".png", ".jpg", ".jpeg"}))
-		fd.Show()
+		}, func(err error) {
+			ShowAppError(err, w)
+		})
 	}, 220, 40)
 
 	resetIconBtn := CreateSecondaryButton("RESET APP ICON", func() {
