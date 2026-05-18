@@ -61,19 +61,20 @@ jobs:
       - name: Build Python bundle with PyInstaller
         working-directory: new-passquantum
         run: |
+          PROJECT_ROOT="$(pwd)"
           python -m PyInstaller \
             --onefile \
             --name face_guard_bundle \
             --distpath ui \
             --workpath /tmp/passquantum_pyinstaller_work \
             --specpath /tmp/passquantum_pyinstaller_spec \
-            --add-data "models:models" \
+            --add-data "${PROJECT_ROOT}/models:models" \
             --collect-all mediapipe \
             --hidden-import cv2 \
             --hidden-import numpy \
             --noconfirm \
             --clean \
-            face_guard.py
+            "${PROJECT_ROOT}/face_guard.py"
 
       - name: Build Linux binary (with embedded Python bundle)
         working-directory: new-passquantum

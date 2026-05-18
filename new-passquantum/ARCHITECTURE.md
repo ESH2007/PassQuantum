@@ -23,7 +23,7 @@ PassQuantum is built with a clean, modular architecture that separates concerns 
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                      UI Layer (ui/)                      │
+│                      UI Layer (ui/)                     │
 │  • Fyne desktop GUI                                     │
 │  • User interaction handling                            │
 │  • Screen navigation                                    │
