@@ -1,39 +1,43 @@
 <#
 .SYNOPSIS
-    Build face_guard_bundle.exe — a self-contained Windows executable that
-    bundles all face-recognition Python modules and their dependencies.
+    Build PassQuantum.exe — a Windows binary with the face-recognition Python
+    runtime embedded directly inside the Go binary.
 
 .DESCRIPTION
-    Uses PyInstaller to pack:
-        face_guard.py          (entry point / Go IPC layer)
-        geometric_encoder.py   (MediaPipe landmark encoder)
-        liveness_detector.py   (EAR blink anti-spoofing)
-        face_authenticator.py  (high-level enroll / verify API)
-        models\                (face_landmarker.task runtime asset)
-    plus all transitive libraries (mediapipe, opencv-python, numpy).
+    Two-phase build:
+
+    Phase 1 — PyInstaller
+        Packs the following Python modules and all their dependencies into a
+        single self-contained face_guard_bundle.exe:
+            face_guard.py          (entry point / Go IPC layer)
+            geometric_encoder.py   (MediaPipe landmark encoder)
+            liveness_detector.py   (EAR blink anti-spoofing)
+            face_authenticator.py  (high-level enroll / verify API)
+            models\face_landmarker.task  (MediaPipe model asset)
+
+    Phase 2 — Go build  (CGO_ENABLED=1, -tags with_face_bundle)
+        Embeds face_guard_bundle.exe into the Go binary via go:embed
+        (ui\python_bundle_windows.go).  The resulting PassQuantum.exe
+        contains everything — no separate Python installation needed on
+        the target machine.
+
+    Output:
+        <script dir>\build\windows\PassQuantum.exe
 
     IMPORTANT — isolated virtual environment
     ----------------------------------------
-    PyInstaller is run inside a dedicated venv that contains ONLY the three
-    packages the app needs.  This prevents the global Python environment
-    (which may have torch, tensorflow, scipy, pandas, etc.) from being
-    scanned and bundled, which would:
-      • bloat the binary to several GB
-      • take hours to analyse
-      • cause NumPy 1.x / 2.x ABI crashes during hook analysis
+    PyInstaller runs inside a dedicated venv (.venv-faceguard) with only
+    mediapipe, opencv-python, numpy, and pyinstaller installed.  This keeps
+    torch / tensorflow / keras out of the analysis graph, avoiding:
+      • multi-GB bundles
+      • multi-hour analysis runs
+      • NumPy 1.x / 2.x ABI crashes in PyInstaller hooks
 
-    The venv is created at  <script dir>\.venv-faceguard  and reused on
-    subsequent runs.  Pass -RebuildVenv to force a clean rebuild.
+    Pass -RebuildVenv to force a clean venv rebuild.
 
-    The produced binary is written to:
-        <repo>\new-passquantum\ui\face_guard_bundle.exe
-
-    It is intended to be placed at  %APPDATA%\PassQuantum\face_guard_bundle.exe
-    on the target Windows machine.
-
-.PARAMETER OutputDir
-    Directory that receives face_guard_bundle.exe.
-    Defaults to  <script dir>\ui
+.PARAMETER GoBuildOutput
+    Full path to the produced Go binary.
+    Defaults to  <script dir>\build\windows\PassQuantum.exe
 
 .PARAMETER WorkDir
     Scratch directory used by PyInstaller during the build.
@@ -45,14 +49,13 @@
 
 .PARAMETER Python
     Base Python interpreter used to create the venv.  Defaults to 'python'.
-    Override with a full path when multiple interpreters are installed,
-    e.g.  -Python "C:\Python311\python.exe"
+    Override with a full path, e.g.  -Python "C:\Python311\python.exe"
 
 .PARAMETER RebuildVenv
     Delete and recreate the isolated venv before building.
 
 .EXAMPLE
-    # Basic — output lands in .\ui\
+    # Basic build — PassQuantum.exe lands in .\build\windows\
     .\Build-FaceBundle.ps1
 
 .EXAMPLE
@@ -60,18 +63,22 @@
     .\Build-FaceBundle.ps1 -RebuildVenv
 
 .EXAMPLE
-    # Custom output directory + specific interpreter
-    .\Build-FaceBundle.ps1 -OutputDir "C:\Publish\PassQuantum" -Python "C:\Python311\python.exe"
+    # Custom output path + specific Python interpreter
+    .\Build-FaceBundle.ps1 -GoBuildOutput "C:\Publish\PassQuantum.exe" -Python "C:\Python311\python.exe"
 #>
 
 [CmdletBinding()]
 param(
-    [string] $OutputDir   = (Join-Path $PSScriptRoot "ui"),
-    [string] $WorkDir     = (Join-Path $env:TEMP "passquantum_pyinstaller_work"),
-    [string] $SpecDir     = (Join-Path $env:TEMP "passquantum_pyinstaller_spec"),
-    [string] $Python      = "python",
+    [string] $GoBuildOutput = (Join-Path $PSScriptRoot "build\windows\PassQuantum.exe"),
+    [string] $WorkDir       = (Join-Path $env:TEMP "passquantum_pyinstaller_work"),
+    [string] $SpecDir       = (Join-Path $env:TEMP "passquantum_pyinstaller_spec"),
+    [string] $Python        = "python",
     [switch] $RebuildVenv
 )
+
+# PyInstaller always outputs face_guard_bundle.exe into ui\ (next to the Go
+# source files) so the go:embed directive in python_bundle_windows.go can find it.
+$PyInstallerOutputDir = Join-Path $PSScriptRoot "ui"
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -166,11 +173,11 @@ Write-OK "Dependencies installed in isolated venv."
 #    the spec file is written (the same root cause fixed for the Linux CI job).
 # ─────────────────────────────────────────────────────────────────────────────
 
-$ProjectRoot = $PSScriptRoot
-$EntryPoint  = Join-Path $ProjectRoot "face_guard.py"
-$ModelsDir   = Join-Path $ProjectRoot "models"
-$BundleName  = "face_guard_bundle"
-$BundleExe   = Join-Path $OutputDir "$BundleName.exe"
+$ProjectRoot  = $PSScriptRoot
+$EntryPoint   = Join-Path $ProjectRoot "face_guard.py"
+$ModelsDir    = Join-Path $ProjectRoot "models"
+$BundleName   = "face_guard_bundle"
+$BundleExe    = Join-Path $PyInstallerOutputDir "$BundleName.exe"
 
 $RequiredFiles = @(
     $EntryPoint,
@@ -202,7 +209,7 @@ foreach ($path in @($BundleExe, $WorkDir, $SpecDir)) {
     }
 }
 
-New-Item -ItemType Directory -Force -Path $OutputDir | Out-Null
+New-Item -ItemType Directory -Force -Path $PyInstallerOutputDir | Out-Null
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 6. Run PyInstaller (using the venv Python)
@@ -218,7 +225,7 @@ $PyInstallerArgs = @(
     "-m", "PyInstaller",
     "--onefile",
     "--name",          $BundleName,
-    "--distpath",      $OutputDir,
+    "--distpath",      $PyInstallerOutputDir,
     "--workpath",      $WorkDir,
     "--specpath",      $SpecDir,
     "--paths",         $ProjectRoot,
@@ -244,19 +251,70 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 7. Verify output
+# 7. Verify PyInstaller output
 # ─────────────────────────────────────────────────────────────────────────────
 
-Write-Header "Build Result"
+Write-Header "Python Bundle Ready"
 
 if (-not (Test-Path $BundleExe)) {
     Write-Fail "PyInstaller did not produce: $BundleExe"
     exit 1
 }
 
-$size = (Get-Item $BundleExe).Length / 1MB
-Write-OK ("face_guard_bundle.exe  ({0:F1} MB)" -f $size)
-Write-OK "Output: $BundleExe"
+$pySize = (Get-Item $BundleExe).Length / 1MB
+Write-OK ("face_guard_bundle.exe  ({0:F1} MB)  → {1}" -f $pySize, $BundleExe)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. Build the Go binary with the Python bundle embedded
+#
+#    python_bundle_windows.go (//go:build with_face_bundle && windows) picks up
+#    ui\face_guard_bundle.exe via //go:embed and extracts it at runtime into
+#    %TEMP%\passquantum-face-guard\face_guard.exe.
+#
+#    Requirements on the build machine:
+#      • Go 1.22+  (go.exe in PATH)
+#      • A C compiler for CGO (TDM-GCC, MSYS2/MinGW-w64, or LLVM/clang)
+#        Fyne requires CGO; without it the build will fail.
+# ─────────────────────────────────────────────────────────────────────────────
+
+Write-Header "Building Go Binary (with embedded Python bundle)"
+
+# Verify Go is available
+try {
+    $goVer = & go version 2>&1
+    Write-OK "Found: $goVer"
+} catch {
+    Write-Fail "go not found in PATH."
+    Write-Step "Install Go 1.22+ from https://go.dev/dl/ and ensure it is in PATH."
+    exit 1
+}
+
+$GoBuildDir = Split-Path $GoBuildOutput -Parent
+New-Item -ItemType Directory -Force -Path $GoBuildDir | Out-Null
+
+$env:CGO_ENABLED = "1"
+
+Write-Step "go build -tags with_face_bundle -o $GoBuildOutput .\ui"
+& go build -tags with_face_bundle -o $GoBuildOutput .\ui
+if ($LASTEXITCODE -ne 0) {
+    Write-Fail "Go build failed (exit $LASTEXITCODE)."
+    Write-Step "Make sure a C compiler (TDM-GCC / MinGW-w64) is installed and in PATH."
+    exit 1
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. Final summary
+# ─────────────────────────────────────────────────────────────────────────────
+
+Write-Header "Build Complete"
+
+$goSize = (Get-Item $GoBuildOutput).Length / 1MB
+Write-OK ("PassQuantum.exe  ({0:F1} MB)  → {1}" -f $goSize, $GoBuildOutput)
 Write-Host ""
-Write-Host "Deploy to the target machine at:" -ForegroundColor Cyan
-Write-Host "  %APPDATA%\PassQuantum\face_guard_bundle.exe" -ForegroundColor White
+Write-Host "The binary is fully self-contained:" -ForegroundColor Cyan
+Write-Host "  - Go UI + password manager" -ForegroundColor White
+Write-Host "  - face_guard_bundle.exe (mediapipe + opencv + all Python deps)" -ForegroundColor White
+Write-Host "  - models\face_landmarker.task" -ForegroundColor White
+Write-Host ""
+Write-Host "On first launch the Python bundle is extracted to:" -ForegroundColor Cyan
+Write-Host "  %TEMP%\passquantum-face-guard\face_guard.exe" -ForegroundColor White

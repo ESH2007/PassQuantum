@@ -1,4 +1,4 @@
-//go:build with_face_bundle
+//go:build with_face_bundle && !windows
 
 package main
 
