@@ -265,7 +265,37 @@ $pySize = (Get-Item $BundleExe).Length / 1MB
 Write-OK ("face_guard_bundle.exe  ({0:F1} MB)  → {1}" -f $pySize, $BundleExe)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 8. Build the Go binary with the Python bundle embedded
+# 8. Embed Windows application manifest (Windows 10 / 11 compatibility)
+#
+#    Without a manifest the OS reports the binary as "not compatible with
+#    your version of Windows".  rsrc (github.com/akavel/rsrc) converts
+#    ui\app.manifest into a ui\rsrc.syso resource object that the Go linker
+#    automatically picks up — no extra linker flags needed.
+# ─────────────────────────────────────────────────────────────────────────────
+
+Write-Header "Embedding Windows Application Manifest"
+
+$ManifestSrc = Join-Path $PSScriptRoot "ui\app.manifest"
+$ManifestSyso = Join-Path $PSScriptRoot "ui\rsrc.syso"
+
+if (-not (Test-Path $ManifestSrc)) {
+    Write-Fail "app.manifest not found at $ManifestSrc"
+    exit 1
+}
+
+Write-Step "go run -mod=vendor github.com/akavel/rsrc  →  ui\rsrc.syso"
+& go run -mod=vendor github.com/akavel/rsrc `
+    -64 `
+    -manifest $ManifestSrc `
+    -o        $ManifestSyso
+if ($LASTEXITCODE -ne 0) {
+    Write-Fail "rsrc failed (exit $LASTEXITCODE)."
+    exit 1
+}
+Write-OK "rsrc.syso generated — manifest will be linked into PassQuantum.exe"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 9. Build the Go binary with the Python bundle embedded
 #
 #    python_bundle_windows.go (//go:build with_face_bundle && windows) picks up
 #    ui\face_guard_bundle.exe via //go:embed and extracts it at runtime into
@@ -297,13 +327,23 @@ $env:CGO_ENABLED = "1"
 Write-Step "go build -tags with_face_bundle -o $GoBuildOutput .\ui"
 & go build -tags with_face_bundle -o $GoBuildOutput .\ui
 if ($LASTEXITCODE -ne 0) {
+    # Clean up the generated syso so a partial build doesn't linger
+    if (Test-Path $ManifestSyso) { Remove-Item -Force $ManifestSyso }
     Write-Fail "Go build failed (exit $LASTEXITCODE)."
     Write-Step "Make sure a C compiler (TDM-GCC / MinGW-w64) is installed and in PATH."
     exit 1
 }
 
+# rsrc.syso is a build-time artefact — remove it so it is not accidentally
+# committed and so that a plain 'go build' (without the manifest step) still
+# works on non-Windows machines.
+if (Test-Path $ManifestSyso) {
+    Remove-Item -Force $ManifestSyso
+    Write-Step "Cleaned up ui\rsrc.syso (build artefact)"
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
-# 9. Final summary
+# 10. Final summary
 # ─────────────────────────────────────────────────────────────────────────────
 
 Write-Header "Build Complete"

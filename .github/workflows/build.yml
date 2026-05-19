@@ -91,12 +91,14 @@ jobs:
           if-no-files-found: error
 
   # ──────────────────────────────────────────────────────────────────────────
-  # Windows cross-build via fyne-cross + Docker
-  # (mirrors: fyne-cross windows -arch=amd64 ...)
+  # Windows native build via Build-FaceBundle.ps1
+  # Runs on a real Windows runner so PyInstaller can produce a native .exe
+  # and CGO (MinGW) can link the Fyne UI.  The Python bundle is embedded
+  # directly into PassQuantum.exe via go:embed + -tags with_face_bundle.
   # ──────────────────────────────────────────────────────────────────────────
   build-windows:
     name: Build — Windows (amd64)
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
 
     steps:
       - name: Checkout
@@ -109,33 +111,24 @@ jobs:
           cache: true
           cache-dependency-path: new-passquantum/go.sum
 
-      - name: Install fyne-cross
-        run: go install github.com/fyne-io/fyne-cross@latest
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-      - name: Build Windows binary (fyne-cross)
-        working-directory: new-passquantum
-        run: |
-          fyne-cross windows \
-            -arch=amd64 \
-            -app-id=com.passquantum.app \
-            -name="PassQuantum" \
-            -icon=Icon.png \
-            ./ui
+      - name: Install MinGW (C compiler for CGO)
+        run: choco install mingw --yes --no-progress
 
-      - name: Copy Python source files into Windows dist
+      - name: Build Windows binary (PowerShell — embedded Python bundle)
         working-directory: new-passquantum
-        run: |
-          mkdir -p fyne-cross/dist/windows-amd64/PassQuantum_AppData
-          cp face_guard.py geometric_encoder.py liveness_detector.py \
-             face_authenticator.py \
-             fyne-cross/dist/windows-amd64/PassQuantum_AppData/
-          cp -r models fyne-cross/dist/windows-amd64/PassQuantum_AppData/
+        shell: pwsh
+        run: .\Build-FaceBundle.ps1
 
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: PassQuantum-windows-amd64
-          path: new-passquantum/fyne-cross/dist/windows-amd64/
+          path: new-passquantum/build/windows/PassQuantum.exe
           if-no-files-found: error
 
   # ──────────────────────────────────────────────────────────────────────────
