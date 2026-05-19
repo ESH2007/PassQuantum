@@ -5,13 +5,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"passquantum/core/crypto"
 	"passquantum/core/model"
 )
 
 func TestWriteReadVaultTypedFormatRoundTrip(t *testing.T) {
 	vaultPath := filepath.Join(t.TempDir(), "typed-roundtrip.pqdb")
-	params, encKey, verKey := mustDeriveVaultKeys(t, "typed-pass")
+	password := "typed-pass"
 
 	passwordEntry := model.NewVaultEntry()
 	passwordEntry.Type = model.EntryTypePassword
@@ -39,11 +38,11 @@ func TestWriteReadVaultTypedFormatRoundTrip(t *testing.T) {
 	cardEntry.Ciphertext = []byte("enc-card")
 
 	entries := []*model.VaultEntry{passwordEntry, noteEntry, cardEntry}
-	if err := WriteVault(entries, vaultPath, encKey, verKey, params); err != nil {
+	if err := WriteVault(entries, vaultPath, password); err != nil {
 		t.Fatalf("WriteVault() error = %v", err)
 	}
 
-	loaded, err := ReadVault(vaultPath, encKey, verKey)
+	loaded, err := ReadVault(vaultPath, password)
 	if err != nil {
 		t.Fatalf("ReadVault() error = %v", err)
 	}
@@ -62,81 +61,16 @@ func TestWriteReadVaultTypedFormatRoundTrip(t *testing.T) {
 	}
 }
 
-func TestReadVaultLegacyFormatAutoMigration(t *testing.T) {
+// TestReadVaultLegacyFormatReturnsError verifies that files without the PQVT magic
+// header are rejected with an error requiring re-encryption.
+func TestReadVaultLegacyFormatReturnsError(t *testing.T) {
 	vaultPath := filepath.Join(t.TempDir(), "legacy-format.pqdb")
-	params, encKey, verKey := mustDeriveVaultKeys(t, "legacy-pass")
-
-	legacyNote := model.NewVaultEntry()
-	legacyNote.Service = "NOTE:Legacy"
-	legacyNote.Username = "note"
-	legacyNote.KyberCiphertext = []byte{11, 12}
-	legacyNote.Nonce = []byte{4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4}
-	legacyNote.Ciphertext = []byte("legacy-note")
-
-	legacyCard := model.NewVaultEntry()
-	legacyCard.Service = "CARD:Legacy"
-	legacyCard.Username = "Credit"
-	legacyCard.KyberCiphertext = []byte{13, 14}
-	legacyCard.Nonce = []byte{5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5}
-	legacyCard.Ciphertext = []byte("legacy-card")
-
-	legacyPlaintext := append(legacyNote.Serialize(), legacyCard.Serialize()...)
-	vault, err := crypto.EncryptVault(legacyPlaintext, encKey, verKey, params)
-	if err != nil {
-		t.Fatalf("EncryptVault() error = %v", err)
-	}
-	if err := os.WriteFile(vaultPath, vault.Serialize(), 0600); err != nil {
+	if err := os.WriteFile(vaultPath, []byte("OLDFORMAT_NOT_PQVT"), 0600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	loaded, err := ReadVault(vaultPath, encKey, verKey)
-	if err != nil {
-		t.Fatalf("ReadVault() legacy error = %v", err)
+	_, err := ReadVault(vaultPath, "any-password")
+	if err == nil {
+		t.Fatal("ReadVault() with legacy format should return an error, got nil")
 	}
-	if len(loaded) != 2 {
-		t.Fatalf("ReadVault() legacy entries length = %d, want 2", len(loaded))
-	}
-
-	if loaded[0].Type != model.EntryTypeNote {
-		t.Fatalf("legacy note type = %d, want %d", loaded[0].Type, model.EntryTypeNote)
-	}
-	if loaded[1].Type != model.EntryTypeCard {
-		t.Fatalf("legacy card type = %d, want %d", loaded[1].Type, model.EntryTypeCard)
-	}
-	if loaded[1].CardSubtype != "credit" {
-		t.Fatalf("legacy card subtype = %q, want %q", loaded[1].CardSubtype, "credit")
-	}
-
-	// First save should rewrite to typed format (auto-migration on save).
-	if err := WriteVault(loaded, vaultPath, encKey, verKey, params); err != nil {
-		t.Fatalf("WriteVault() auto-migration save error = %v", err)
-	}
-
-	loadedAgain, err := ReadVault(vaultPath, encKey, verKey)
-	if err != nil {
-		t.Fatalf("ReadVault() after migration save error = %v", err)
-	}
-	if len(loadedAgain) != 2 {
-		t.Fatalf("ReadVault() after migration length = %d, want 2", len(loadedAgain))
-	}
-	if loadedAgain[1].Type != model.EntryTypeCard {
-		t.Fatalf("migrated card type = %d, want %d", loadedAgain[1].Type, model.EntryTypeCard)
-	}
-}
-
-func mustDeriveVaultKeys(t *testing.T, password string) (crypto.KDFParams, []byte, []byte) {
-	t.Helper()
-	params := crypto.DefaultKDFParams()
-	salt, err := crypto.GenerateSalt()
-	if err != nil {
-		t.Fatalf("GenerateSalt() error = %v", err)
-	}
-	params.Salt = salt
-
-	encryptionKey, verificationKey, err := crypto.DeriveKeys(password, params)
-	if err != nil {
-		t.Fatalf("DeriveKeys() error = %v", err)
-	}
-
-	return params, encryptionKey, verificationKey
 }

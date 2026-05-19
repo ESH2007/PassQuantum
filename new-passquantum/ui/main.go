@@ -25,9 +25,6 @@ type AppState struct {
 	masterPassword         string
 	sessionEncryptionKey   []byte
 	sessionVerificationKey []byte
-	encryptionKey          []byte
-	verificationKey        []byte
-	kdfParams              crypto.KDFParams
 	securityProfile        *crypto.AppSecurityProfile
 	mu                     sync.Mutex
 	isUnlocked             bool

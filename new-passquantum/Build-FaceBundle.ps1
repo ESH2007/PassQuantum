@@ -202,6 +202,17 @@ foreach ($f in $RequiredFiles) {
 
 Write-Header "Cleaning Previous Build Artefacts"
 
+# Remove any leftover files in build\windows\ to prevent stale binary errors.
+$BuildWindowsDir = Join-Path $PSScriptRoot "build\windows"
+if (Test-Path $BuildWindowsDir) {
+    Get-ChildItem -Path $BuildWindowsDir -File | ForEach-Object {
+        Remove-Item -Force $_.FullName
+        Write-Step "Removed: $($_.FullName)"
+    }
+} else {
+    New-Item -ItemType Directory -Force -Path $BuildWindowsDir | Out-Null
+}
+
 foreach ($path in @($BundleExe, $WorkDir, $SpecDir)) {
     if (Test-Path $path) {
         Remove-Item -Recurse -Force $path

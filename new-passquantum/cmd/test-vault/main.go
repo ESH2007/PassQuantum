@@ -14,33 +14,20 @@ func main() {
 	vaultFile := "test_vault.pqdb"
 	os.Remove(vaultFile)
 
-	// Generate KDF parameters
-	kdfParams := crypto.DefaultKDFParams()
-	salt, err := crypto.GenerateSalt()
-	if err != nil {
-		log.Fatal("Failed to generate salt:", err)
-	}
-	kdfParams.Salt = salt
-
-	// Derive keys
 	masterPassword := "testpassword123"
-	encKey, verKey, err := crypto.DeriveKeys(masterPassword, kdfParams)
-	if err != nil {
-		log.Fatal("Failed to derive keys:", err)
-	}
 
 	fmt.Println("============================================================")
 	fmt.Println("TEST 1: Create vault and add a password")
 	fmt.Println("============================================================")
 
 	// Create vault with no entries
-	err = storage.WriteVault([]*model.VaultEntry{}, vaultFile, encKey, verKey, kdfParams)
+	err := storage.WriteVault([]*model.VaultEntry{}, vaultFile, masterPassword)
 	if err != nil {
 		log.Fatal("Failed to create vault:", err)
 	}
 
 	// Read and verify vault is empty
-	entries, err := storage.ReadVault(vaultFile, encKey, verKey)
+	entries, err := storage.ReadVault(vaultFile, masterPassword)
 	if err != nil {
 		log.Fatal("Failed to read vault:", err)
 	}
@@ -50,7 +37,7 @@ func main() {
 	fmt.Println("TEST 2: Add a password")
 	fmt.Println("============================================================")
 
-	// Generate Kyber keypair
+	// Generate Kyber keypair (used for per-entry encryption, separate from vault KEM)
 	pubKey, privKey, err := crypto.GenerateKeypair()
 	if err != nil {
 		log.Fatal("Failed to generate keypair:", err)
@@ -79,7 +66,7 @@ func main() {
 	fmt.Printf("  AES ciphertext size: %d bytes\n", len(ciphertext))
 
 	// Save vault with the new entry
-	err = storage.WriteVault([]*model.VaultEntry{entry}, vaultFile, encKey, verKey, kdfParams)
+	err = storage.WriteVault([]*model.VaultEntry{entry}, vaultFile, masterPassword)
 	if err != nil {
 		log.Fatal("Failed to save vault:", err)
 	}
@@ -89,7 +76,7 @@ func main() {
 	fmt.Println("============================================================")
 
 	// Read vault
-	entries, err = storage.ReadVault(vaultFile, encKey, verKey)
+	entries, err = storage.ReadVault(vaultFile, masterPassword)
 	if err != nil {
 		log.Fatal("Failed to read vault:", err)
 	}

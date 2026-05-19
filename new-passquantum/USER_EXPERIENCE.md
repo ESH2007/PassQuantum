@@ -1,863 +1,348 @@
-# PassQuantum - User Experience Guide
+# PassQuantum User Experience
 
-> Complete user-facing documentation including installation, usage, troubleshooting, and UI navigation.
+This document describes the current user-facing behavior of the app as implemented in `ui/`, `strength/`, and the face-guard bridge.
 
-## 📋 Table of Contents
+## 1. First impression
 
-- [Getting Started](#getting-started)
-- [Installation](#installation)
-- [First Time Setup](#first-time-setup)
-- [Using PassQuantum](#using-passquantum)
-- [UI Navigation](#ui-navigation)
-- [Managing Passwords](#managing-passwords)
-- [Managing Vaults](#managing-vaults)
-- [Settings](#settings)
-- [Backup and Recovery](#backup-and-recovery)
-- [Troubleshooting](#troubleshooting)
-- [Security Best Practices](#security-best-practices)
-- [FAQ](#faq)
+PassQuantum opens as a desktop Fyne application with:
 
----
+- a neon/dark visual style
+- a particle animated background
+- custom cards, dividers, and buttons
+- a single-window flow that changes content rather than opening many independent windows
 
-## Getting Started
+The app title is:
 
-### System Requirements
-
-**Minimum Requirements**:
-- **Operating System**: Linux, macOS 10.12+, or Windows 10+
-- **Memory**: 4 GB RAM
-- **Disk Space**: 100 MB free space
-- **Display**: 800x600 resolution or higher
-- **Graphics**: OpenGL 2.0 compatible graphics card (or software renderer)
-
-**Recommended**:
-- **Memory**: 8 GB RAM or more
-- **Display**: 1920x1080 resolution
-- **Graphics**: Modern GPU with updated drivers
-
-### Platform-Specific Notes
-
-**Linux**:
-- Requires X11 or Wayland display server
-- Install dependencies: `sudo apt install libgl1-mesa-dev libxcursor-dev libxinerama-dev libxrandr-dev`
-
-**macOS**:
-- Xcode command-line tools required: `xcode-select --install`
-- May need to allow app in Security & Privacy settings
-
-**Windows**:
-- May require graphics driver updates for OpenGL support
-- See "Windows OpenGL Issues" section if encountering display problems
-
----
-
-## Installation
-
-### Option 1: Download Pre-built Binary (Recommended)
-
-1. Visit the [Releases page](https://github.com/yourusername/passquantum/releases)
-2. Download the appropriate version for your platform:
-   - **Linux**: `PassQuantum-linux-amd64.tar.gz`
-   - **Windows**: `PassQuantum-windows-amd64.zip`
-   - **macOS**: `PassQuantum-macos-amd64.zip`
-3. Extract the archive
-4. Run the executable:
-   - Linux/macOS: `./PassQuantum`
-   - Windows: Double-click `PassQuantum.exe`
-
-### Option 2: Build from Source
-
-```bash
-# Prerequisites: Go 1.22 or later
-
-# Clone repository
-git clone https://github.com/yourusername/passquantum.git
-cd passquantum/new-passquantum
-
-# Install dependencies
-go mod tidy
-
-# Build
-go build -o passquantum ./ui
-
-# Run
-./passquantum
+```text
+PassQuantum - Post-Quantum Safe Password Manager
 ```
 
----
-
-## First Time Setup
-
-### Launch Application
-
-When you first launch PassQuantum:
-
-```
-┌─────────────────────────────────────┐
-│     PassQuantum                     │
-│   Quantum-Proof Encryption          │
-│                                     │
-│  Enter Master Password:             │
-│  [____________________________]     │
-│                                     │
-│       [  DESBLOQUEAR  ]            │
-└─────────────────────────────────────┘
-```
-
-### What Happens on First Run
-
-1. **Keypair Generation**: PassQuantum automatically generates:
-   - `public.key` (Kyber768 public key, 1184 bytes)
-   - `private.key` (Kyber768 private key, 2400 bytes)
-   
-   **Important**: These files are essential for encryption/decryption. Back them up securely!
-
-2. **Master Password Entry**: You'll be prompted to enter a master password
-
-3. **Vault Creation**: Your first vault is created (default name: "Default_Vault")
-
-4. **Main Screen**: You're ready to start storing passwords
-
-### Choosing a Strong Master Password
-
-Your master password is the key to all your stored passwords. Choose wisely:
-
-✅ **Good Practices**:
-- At least 16 characters
-- Mix of uppercase, lowercase, numbers, and symbols
-- Use a passphrase (e.g., "Correct-Horse-Battery-Staple-2024!")
-- Unique password not used elsewhere
-
-❌ **Avoid**:
-- Common words or phrases
-- Personal information (birthdays, names)
-- Short passwords (< 12 characters)
-- Reused passwords from other services
-
----
-
-## Using PassQuantum
-
-### Main Application Flow
-
-```
-Login Screen
-    ↓
-Vault Selection
-    ↓
-Main Password Manager
-    ↓
-View/Manage Passwords
-```
-
-### Login Screen
-
-When you launch PassQuantum:
-
-1. Enter your master password
-2. Click "DESBLOQUEAR" (Unlock)
-3. If correct: proceed to vault selection
-4. If incorrect: error message displayed
-
-**Features**:
-- Password field is masked for security
-- Animated particle background
-- Neon-styled cyberpunk aesthetic
-
-### Vault Selection Screen
-
-After login, you'll see all your available vaults:
-
-```
-┌─────────────────────────────────────────┐
-│         Your Vaults                     │
-│  ───────────────────────────────────── │
-│                                         │
-│  ┌───────────────────────────────────┐ │
-│  │ Personal                          │ │
-│  │ Location: vaults/Personal.pqdb    │ │
-│  │ [Open] [Delete]                   │ │
-│  └───────────────────────────────────┘ │
-│                                         │
-│  ┌───────────────────────────────────┐ │
-│  │ Work                              │ │
-│  │ Location: vaults/Work.pqdb        │ │
-│  │ [Open] [Delete]                   │ │
-│  └───────────────────────────────────┘ │
-│                                         │
-│  [+ Create New Vault] [⚙ Settings]     │
-│  [🔒 Lock & Exit]                      │
-└─────────────────────────────────────────┘
-```
-
-**Actions**:
-- **Open**: Access a vault to view/manage passwords
-- **Delete**: Remove vault (with confirmation dialog)
-- **Create New Vault**: Create additional vault with custom name
-- **Settings**: Access application settings
-- **Lock & Exit**: Lock all vaults and close application
-
----
-
-## UI Navigation
-
-### Screen Flow Diagram
-
-```
-┌──────────────┐
-│ Login Screen │
-└──────┬───────┘
-       │
-       ▼
-┌──────────────────┐      ┌──────────────┐
-│ Vault Selection  │◄────►│  Settings    │
-└──────┬───────────┘      └──────────────┘
-       │
-       ▼
-┌────────────────────┐
-│ Main Screen        │
-│ (Password Manager) │
-└──────┬─────────────┘
-       │
-       ▼
-┌──────────────────┐
-│ Passwords View   │
-└──────────────────┘
-```
-
-### Navigation Controls
-
-| Action | How To | What Happens |
-|--------|--------|-------------|
-| **Go Back** | Click "← Back" button | Return to previous screen |
-| **Lock & Exit** | Click "🔒 Lock & Exit" | Close app, clear memory |
-| **Switch Vault** | Click "← Back to Vaults" | Return to vault selection |
-| **Open Settings** | Click "⚙ Settings" | Access settings panel |
-
----
-
-## Managing Passwords
-
-### Adding a Password
-
-1. From the **Main Screen**, you'll see the password entry form:
-
-```
-┌─────────────────────────────────────────┐
-│  ADD NEW PASSWORD                       │
-│  ─────────────────────────────────────  │
-│                                         │
-│  Service Name:                          │
-│  [Gmail_____________________________]   │
-│                                         │
-│  Username / Email:                      │
-│  [user@gmail.com____________________]   │
-│                                         │
-│  Password:                              │
-│  [••••••••••••••••••••••••••••••••]   │
-│                                         │
-│       [➕ SAVE PASSWORD]                │
-└─────────────────────────────────────────┘
-```
-
-2. Fill in the fields:
-   - **Service Name**: Website or app name (e.g., "Gmail", "GitHub", "Netflix")
-   - **Username/Email**: Your username or email for that service
-   - **Password**: The password to encrypt and store
-
-3. Click "➕ SAVE PASSWORD"
-
-4. Password is encrypted and added to your vault
-
-5. Success message is displayed
-
-### Viewing Passwords
-
-1. From the **Main Screen**, click "📋 VIEW ALL"
-
-2. All passwords are decrypted and displayed in cards:
-
-```
-┌─────────────────────────────────────────┐
-│  YOUR PASSWORDS                          │
-│  Total: 3 passwords                      │
-│  ─────────────────────────────────────  │
-│                                         │
-│  ┌─────────────────────────────────┐   │
-│  │ #1 - Gmail                      │   │
-│  │ 👤 user@gmail.com               │   │
-│  │ 🔐 ••••••••••                   │   │
-│  │ [👁 Show] [📋 Copy] [🗑 Delete] │   │
-│  └─────────────────────────────────┘   │
-│                                         │
-│  ┌─────────────────────────────────┐   │
-│  │ #2 - GitHub                     │   │
-│  │ 👤 myusername                   │   │
-│  │ 🔐 ••••••••••                   │   │
-│  │ [👁 Show] [📋 Copy] [🗑 Delete] │   │
-│  └─────────────────────────────────┘   │
-│                                         │
-│  [← Back]                               │
-└─────────────────────────────────────────┘
-```
+## 2. Startup experience
 
-### Password Card Actions
+### 2.1 First-time setup
 
-Each password card provides several actions:
+If no app-security profile exists, the user sees a **Create Master Password** screen.
 
-**Show/Hide Password**:
-- Click "👁 Show" to reveal the password
-- Click "👁 Hide" to mask it again
+That flow:
 
-**Copy to Clipboard**:
-- Click "📋 Copy" to copy password to clipboard
-- Password remains on clipboard for the configured timeout (default: 30 seconds)
-- "Password copied!" confirmation appears
+1. asks for a new global master password
+2. asks for confirmation
+3. creates `app-security.pqmeta`
+4. creates a default vault if no vaults exist
+5. optionally opens face registration if the face guard is available and no face profile is detected
+6. continues to vault selection
 
-**Delete Password**:
-- Click "🗑 Delete" to remove password
-- Confirmation dialog appears if enabled in settings
-- Password is permanently removed from vault
+### 2.2 Returning user
 
----
+If the app-security profile exists and matches the current private key, the user sees an **Unlock PassQuantum** screen.
 
-## Managing Vaults
+Unlocking:
 
-### Creating a New Vault
+1. verifies the global master password
+2. starts face monitoring if the face guard is running
+3. opens the vault-selection view
 
-1. From **Vault Selection**, click "[+ Create New Vault]"
+### 2.3 Private-key mismatch case
 
-2. Enter vault details:
-   ```
-   ┌─────────────────────────────────┐
-   │  Create New Vault               │
-   │  ───────────────────────────── │
-   │                                 │
-   │  Vault Name:                    │
-   │  [Work_Passwords____________]   │
-   │                                 │
-   │  [Create] [Cancel]              │
-   └─────────────────────────────────┘
-   ```
+If the stored profile belongs to a different `private.key`, the app returns to setup mode and shows a warning that the existing vaults may need manual migration.
 
-3. Click "Create"
+## 3. Face registration and monitoring
 
-4. New vault is created with:
-   - Independent master password (same as your current session)
-   - Separate `.pqdb` file in `vaults/` directory
-   - Empty password list
+### 3.1 Registration experience
 
-### Opening a Vault
+The in-app training screen currently includes:
 
-1. From **Vault Selection**, find your desired vault
+- title: `FACIAL REGISTRATION`
+- live camera preview
+- progress bar
+- status text
+- `START REGISTRATION` button
 
-2. Click "Open" on the vault card
+Training behavior:
 
-3. Vault is loaded and you see the **Main Screen** for that vault
+- captures many samples from the webcam
+- requires at least one blink
+- updates progress inside the Fyne window
+- automatically starts monitoring after completion
 
-4. Vault name is displayed at the top
+### 3.2 Monitoring experience
 
-### Switching Between Vaults
+After unlock, the face guard monitors continuously in the background.
 
-1. From **Main Screen**, click "← Back to Vaults"
+If the recognized face disappears for 5 seconds:
 
-2. You return to **Vault Selection**
+- the app locks
+- sensitive session state is cleared
+- any monitored apps selected by the user are force-closed
 
-3. Click "Open" on a different vault
+This is a strong UX behavior and should be treated carefully because monitored apps are killed without a save prompt.
 
-4. Current vault is closed, new vault is opened
+## 4. Main navigation model
 
-**Note**: Only one vault can be open at a time
+After a vault is opened, the app uses a left sidebar with these destinations:
 
-### Deleting a Vault
+- Vaults
+- Passwords
+- Generate
+- Check Password
+- Settings
+- Lock & Exit
 
-1. From **Vault Selection**, click "Delete" on a vault card
+The content area on the right changes in place.
 
-2. Confirmation dialog appears:
-   ```
-   Are you sure you want to delete vault "Work"?
-   This action cannot be undone.
-   
-   [Delete] [Cancel]
-   ```
+## 5. Vault-selection experience
 
-3. Click "Delete" to confirm
+The vaults view presents:
 
-4. Vault file is permanently removed
+- a list of existing vault cards
+- vault names
+- vault file location hints
+- `OPEN` and `DELETE` actions
+- `+ CREATE VAULT` action
 
-**Warning**: Deleted vaults cannot be recovered. Make sure you have backups!
+Creating a vault:
 
----
+- asks only for the vault name
+- uses the already unlocked global master password automatically
 
-## Settings
+Deleting a vault:
 
-Access settings by clicking "⚙ Settings" from **Vault Selection**.
+- requires confirmation
+- removes the `.pqdb` file permanently
 
-### Security Tab 🔒
+## 6. Passwords view
 
-**Password Strength Requirements**:
-- Configure minimum password complexity
-- Options: Weak | Medium | Strong | Very Strong
+The main passwords screen is really an **Add Vault Item** screen.
 
-**Master Password Management**:
-- Click "Change Master Password" to update your master password
-- Requires current password verification
+### 6.1 Supported item types
 
-**Session Management**:
-- **Auto-lock Timeout**: Automatically lock after inactivity
-  - Options: 5 min | 15 min | 30 min | 1 hour | Never
-- **Clipboard Clear Timeout**: Auto-clear copied passwords
-  - Options: 15 sec | 30 sec | 1 min | 5 min
+Users can add:
 
-**Two-Factor Authentication** (Coming Soon):
-- Enable additional security layer
-- Will support TOTP and advanced-auth authentication
+- `Password`
+- `Cyphered Note`
+- `Card`
 
-### Vault Tab 📦
+The form changes dynamically based on the selected item type.
 
-**Vault Information**:
-- Current vault name
-- Total number of vaults
-- Vault statistics (passwords count, file size)
+### 6.2 Password item UX
 
-**Vault Maintenance**:
-- **Compact Vault**: Optimize vault storage, remove deleted entries
-- **Export Vault**: Create encrypted backup file
-- **Import Vault**: Restore from backup file
+For password items the user sees:
 
-**Last Backup**: Shows timestamp of most recent backup
+- service name
+- username/email
+- password field
+- live strength analysis
 
-### Display Tab 🎨
+### 6.3 Note item UX
 
-**Appearance**:
-- **Theme**: Dark | Light | System
-  - Dark: Cyberpunk neon aesthetic (default)
-  - Light: Clean professional look
-  - System: Follow OS theme
-- **Font Size**: Small | Medium | Large
-  - Adjust text size for readability
+For note items the user sees:
 
-**Behavior**:
-- **Show password on hover**: Reveal password when hovering (default: OFF)
-- **Confirm before deleting**: Show confirmation dialog (default: ON)
+- note title
+- multi-line note content
 
-### Backup Tab 💾
+Internally the note is stored as encrypted JSON payload.
 
-**Automatic Backups**:
-- **Enable Automatic Backups**: Toggle on/off
-- **Backup Frequency**: Daily | Weekly | Monthly
+### 6.4 Card item UX
 
-**Manual Backup**:
-- **Backup Now**: Create immediate encrypted backup
-- Updates "Last Backup" timestamp
+For card items the user sees:
 
-**Recovery**:
-- **Restore from Backup**: Select backup file to restore
+- card type
+- card nickname
+- card holder
+- card number
+- expiry
+- CVV
 
-**Cloud Backup** (Coming Soon):
-- Encrypted cloud sync capability
-- Major cloud provider support
+Internally the card is also stored as encrypted JSON payload.
 
-### About Tab ℹ️
+### 6.5 Save flow
 
-**Application Information**:
-- PassQuantum logo and branding
-- Version number
-- Feature highlights checklist
+On save:
 
-**Resources**:
-- **📖 Documentation**: Link to full documentation
-- **🔄 Check for Updates**: Check for newer versions
+1. the current vault is read and decrypted
+2. the item payload is encrypted
+3. the entry is appended
+4. the vault is rewritten
+5. the form is cleared
+6. a success dialog is shown
 
----
+### 6.6 View-all flow
 
-## Backup and Recovery
+`VIEW ALL ITEMS` opens the vault-item list.
 
-### Why Backup?
+That list supports:
 
-**Critical Files to Backup**:
-1. **`public.key`** & **`private.key`**: Required to decrypt passwords
-2. **`vaults/*.pqdb`**: Your encrypted password vaults
+- password show/hide
+- password copy
+- password edit
+- password delete
+- note view/copy/delete
+- card show/copy/delete
 
-**Without these files, your passwords are irrecoverable!**
+## 7. Password generator experience
 
-### Creating Backups
+The generator screen lets the user configure:
 
-#### Method 1: Manual File Backup
+- length
+- uppercase
+- lowercase
+- numbers
+- special characters
+- exclude ambiguous characters
 
-```bash
-# Create backup directory
-mkdir passquantum-backup
+Actions:
 
-# Copy key files
-cp public.key passquantum-backup/
-cp private.key passquantum-backup/
+- `GENERATE`
+- `COPY`
+- `SAVE TO VAULT`
 
-# Copy all vaults
-cp -r vaults/ passquantum-backup/
+The screen is integrated into the main app instead of being a separate tool window.
 
-# Create archive
-tar -czf passquantum-backup-$(date +%Y%m%d).tar.gz passquantum-backup/
-```
+## 8. Password checker experience
 
-#### Method 2: Using Built-in Backup Feature
+The checker screen gives:
 
-1. Go to **Settings** → **Vault Tab**
-2. Click "Export Vault (Encrypted)"
-3. Choose destination
-4. Backup file is created with timestamp
+- live score label
+- strength bar
+- crack-time estimate
+- issue list
 
-### Restoring from Backup
+The analysis considers:
 
-#### Restore Key Files
+- repeated characters
+- keyboard walks
+- leet patterns
+- date-like patterns
+- common names and passwords
+- missing character classes
+- similarity to passwords already stored in the vault
 
-```bash
-# Extract backup
-tar -xzf passquantum-backup-20260313.tar.gz
+There is also an easter-egg mode when the input includes `neal.fun`.
 
-# Copy keys to PassQuantum directory
-cp passquantum-backup/public.key .
-cp passquantum-backup/private.key .
-cp -r passquantum-backup/vaults/ .
-```
+## 9. Settings experience
 
-#### Using Built-in Restore
+The settings area uses four custom tab-like sections:
 
-1. Go to **Settings** → **Vault Tab**  
-2. Click "Import Vault Backup"
-3. Select backup file
-4. Choose "Merge" or "Replace" option
-5. Vault is restored
+- Security
+- Vaults
+- Visuals
+- About
 
-### Backup Best Practices
+### 9.1 Security section
 
-✅ **Do**:
-- Backup regularly (weekly or after adding important passwords)
-- Store backups in multiple locations (USB drive, encrypted cloud storage)
-- Test restores periodically to verify backups work
-- Encrypt backup archives with additional password
+Currently implemented:
 
-❌ **Don't**:
-- Store backups on the same device only
-- Share backups over unsecured channels
-- Backup without testing restore process
-- Leave backups unencrypted on shared storage
+- change master password
+- monitored-app selection from the current running-process list
+- warnings about force-kill behavior
+- refresh of the process list
 
----
+### 9.2 Vaults section
 
-## Troubleshooting
+Currently shown:
 
-### Common Issues and Solutions
+- current vault label
+- total vault count
+- maintenance and backup buttons
 
-#### Application Won't Start
+Current implementation status:
 
-**Symptoms**: App crashes immediately or window doesn't open
+- `COMPACT VAULT` -> informational dialog
+- `EXPORT VAULT` -> informational dialog
+- `IMPORT VAULT` -> informational dialog
+- `BACKUP NOW` -> informational dialog
+- `RESTORE` -> confirmation + informational dialog
 
-**Solutions**:
-1. **Linux**: Check display server is running
-   ```bash
-   echo $DISPLAY  # Should show ":0" or similar
-   export DISPLAY=:0
-   ./passquantum
-   ```
+So this section is present in the UX, but most of its actions are placeholders today.
 
-2. **Check dependencies** (Linux):
-   ```bash
-   sudo apt install libgl1-mesa-dev libxcursor-dev libxinerama-dev libxrandr-dev
-   ```
+### 9.3 Visuals section
 
-3. **Windows OpenGL Error**: See "Windows Graphics Issues" section below
+This section is much more complete.
 
----
+Implemented features:
 
-#### Windows Graphics Issues
+- theme selector UI
+- font-size selector UI
+- delete-confirmation toggle UI
+- OS-native image pickers for palette/icon selection
+- manual palette personalization dialog
+- upload image to analyze and extract top colors
+- reset palette to defaults
+- change app icon from image file
+- reset app icon
 
-**Error Message**:
-```
-Fyne error: window creation error
-Cause: APIUnavailable: WGL: The driver does not appear to support OpenGL
-```
+### 9.4 About section
 
-**Solution 1 - Update Graphics Drivers** (Recommended):
-1. Identify your graphics card (Start → Device Manager → Display adapters)
-2. Download latest drivers:
-   - **NVIDIA**: https://www.nvidia.com/Download/index.aspx
-   - **AMD**: https://www.amd.com/en/support
-   - **Intel**: https://www.intel.com/content/www/us/en/download-center/home.html
-3. Install drivers and restart computer
+The About screen currently shows:
 
-**Solution 2 - Software Rendering**:
-1. Download Mesa3D from: https://fdossena.com/?p=mesa/index.frag
-2. Extract `opengl32.dll` from the archive
-3. Place `opengl32.dll` in the same folder as `PassQuantum.exe`
-4. Run `PassQuantum.exe`
+- static app name
+- static version text `Version 1.0.0`
+- feature bullets
+- docs button
+- updates button
 
-**Note**: Software rendering is slower but will work on any system.
+Current implementation status:
 
----
+- Docs button -> informational dialog
+- Updates button -> informational dialog
 
-#### Cannot Decrypt Passwords
+## 10. Locking and exit behavior
 
-**Symptoms**: "Failed to decrypt password" or "Invalid authentication tag" errors
+The sidebar includes `Lock & Exit`.
 
-**Possible Causes**:
-1. **Wrong master password**: Re-enter correct password
-2. **Missing private.key**: Restore from backup
-3. **Corrupted vault file**: Restore from backup
-4. **Vault file from different keypair**: Cannot decrypt without original keys
+Current behavior:
 
-**Solutions**:
-- Verify you're using the correct master password
-- Check that `private.key` exists and has correct permissions
-- Restore keypair and vault from backup if corrupted
+- clears sensitive state
+- quits the app
 
----
+Face-loss locking returns the app to the unlock flow without quitting.
 
-#### Forgotten Master Password
+## 11. What is real vs. what is aspirational
 
-**Bad News**: There is **no way to recover** your master password. This is by design for security.
+### Real today
 
-**Your Options**:
-1. **If you have a backup**: Restore keypair and vaults from before password change
-2. **If no backup**: Your passwords are permanently inaccessible
+- global master-password gate
+- multi-vault workflow
+- typed vault items
+- password generator
+- password checker
+- theme/palette/icon customization
+- face training and face monitoring
+- monitored-app kill list
+- master-password rotation with vault re-encryption
 
-**Prevention**:
-- Write down your master password and store it securely
-- Use a master password you can remember
-- Consider using a passphrase (easier to remember than random characters)
+### Present in UI but mostly placeholder
 
----
+- compact vault
+- export/import
+- backup/restore
+- docs link behavior
+- update check behavior
 
-#### Vault File Corrupted
+## 12. Files a user will notice
 
-**Symptoms**: "Failed to read vault" or "HMAC verification failed"
+Depending on the workflow, users may notice:
 
-**Causes**:
-- Disk error or unexpected shutdown during write
-- Manual editing of `.pqdb` file
-- File system corruption
+- `public.key`
+- `private.key`
+- `app-security.pqmeta`
+- `vaults/*.pqdb`
+- `face_data.npy`
 
-**Solutions**:
-1. Restore vault from backup
-2. If no backup and file is partially readable, contact support
-3. For future: Enable automatic backups in settings
+For packaged builds they may also encounter:
 
----
+- `PassQuantum.exe`
+- `face_guard_bundle.exe` during packaging workflows
 
-#### App Freezes or Crashes
+## 13. Practical UX summary
 
-**Symptoms**: Application becomes unresponsive or closes unexpectedly
+The current product experience is:
 
-**Solutions**:
-1. **Check system resources**: Ensure sufficient RAM available
-2. **Update to latest version**: Bug fixes in newer releases
-3. **Check for large vaults**: 1000+ passwords may cause slowness
-4. **View logs** (Linux/macOS):
-   ```bash
-   ./passquantum 2>&1 | tee passquantum.log
-   ```
-5. **Report issue**: Provide crash logs and steps to reproduce
+- unlock once with a global master password
+- choose a vault
+- manage encrypted items from a sidebar shell
+- use generator/checker tools in the same app
+- optionally rely on face monitoring to auto-lock when away
+- personalize the look and icon locally
 
----
-
-#### Cannot Add Password
-
-**Symptoms**: "Failed to save password" error
-
-**Possible Causes**:
-1. Disk full
-2. No write permission to `vaults/` directory
-3. Vault file locked by another process
-
-**Solutions**:
-1. Check disk space: `df -h` (Linux/macOS) or File Explorer (Windows)
-2. Verify permissions:
-   ```bash
-   ls -la vaults/
-   chmod 600 vaults/*.pqdb  # Fix if needed
-   ```
-3. Ensure no other PassQuantum instances are running
-4. Try restarting application
-
----
-
-## Security Best Practices
-
-### Password Management
-
-✅ **Recommended Practices**:
-1. **Use unique passwords** for each service
-2. **Generate random passwords** (15-20 characters)
-3. **Rotate passwords periodically** (every 90-180 days for critical accounts)
-4. **Don't reuse passwords** across different vaults
-5. **Enable 2FA** on services where available (in addition to storing passwords)
-
-### Master Password Security
-
-✅ **Do**:
-- Choose a strong, memorable passphrase
-- Use 16+ characters
-- Mix character types
-- Write it down and store physically in a secure location
-- Never share it
-
-❌ **Don't**:
-- Use common passwords or dictionary words
-- Share your master password via email or messaging
-- Store it in a cloud note or text file
-- Use the same master password for multiple vaults
-
-### File Security
-
-✅ **Protect Your Files**:
-1. **Set proper permissions**:
-   ```bash
-   chmod 600 private.key
-   chmod 600 vaults/*.pqdb
-   ```
-
-2. **Backup regularly**:
-   - Weekly backups to external drive
-   - Monthly backups to encrypted cloud storage
-
-3. **Encrypt your system**:
-   - Use full-disk encryption (FileVault, BitLocker, LUKS)
-   - Store backups on encrypted media
-
-4. **Secure your device**:
-   - Keep OS and software updated
-   - Use antivirus/anti-malware
-   - Enable firewall
-   - Lock screen when away
-
-### Physical Security
-
-✅ **Protect Physical Access**:
-- Lock your computer when leaving
-- Don't leave PassQuantum open and unattended
-- Store backup USB drives in secure location (safe, bank deposit box)
-- Shred or securely erase old backup media
-
-### Network Security
-
-✅ **Stay Safe Online**:
-- PassQuantum works offline (no network communication)
-- Be cautious of phishing attempts asking for your master password
-- Verify official PassQuantum releases before downloading
-- Don't install PassQuantum from untrusted sources
-
----
-
-## FAQ
-
-### General Questions
-
-**Q: Is PassQuantum really quantum-safe?**  
-A: Yes. PassQuantum uses Kyber768, a post-quantum key encapsulation mechanism standardized by NIST. It's designed to resist attacks from both classical and quantum computers.
-
-**Q: Can I use PassQuantum on multiple computers?**  
-A: Yes, but you must copy your `public.key`, `private.key`, and `vaults/` directory to each computer. Cloud sync is planned for a future release.
-
-**Q: Does PassQuantum connect to the internet?**  
-A: No. PassQuantum is completely offline and stores all data locally. No telemetry, no cloud sync (yet), no network connections.
-
-**Q: Is my data safe if someone steals my computer?**  
-A: If your disk is encrypted and your computer is locked, yes. Without your master password, your vaults cannot be decrypted. However, enable full-disk encryption for maximum protection.
-
-**Q: What happens if I forget my master password?**  
-A: Unfortunately, there is no recovery mechanism. Your passwords are permanently inaccessible. This is a security feature, not a bug.
-
----
-
-### Technical Questions
-
-**Q: What encryption algorithms does PassQuantum use?**  
-A: 
-- **Key Derivation**: Argon2id (64MB memory, GPU-resistant)
-- **Vault Encryption**: AES-256-GCM (authenticated encryption)
-- **Integrity**: HMAC-SHA256
-- **Post-Quantum**: Kyber768 (NIST PQC standard)
-
-**Q: Where are my passwords stored?**  
-A: In encrypted `.pqdb` files in the `vaults/` directory. Each vault is a separate file.
-
-**Q: Can I move PassQuantum to a different folder?**  
-A: Yes. Copy the entire directory including `public.key`, `private.key`, and `vaults/` folder. All paths are relative.
-
-**Q: How do I uninstall PassQuantum?**  
-A: Delete the application folder. To completely remove all data, also delete `vaults/`, `public.key`, and `private.key`. **Warning**: This is irreversible!
-
-**Q: Is PassQuantum open source?**  
-A: Info about licensing should be in the LICENSE file and README. The code is available for audit and contribution.
-
----
-
-### Features Questions
-
-**Q: Can I import passwords from another password manager?**  
-A: Not yet, but this feature is planned. For now, you must manually add passwords.
-
-**Q: Does PassQuantum have a browser extension?**  
-A: Not yet. Browser integration is on the roadmap.
-
-**Q: Can I share passwords with other users?**  
-A: Not yet. Secure sharing is planned for a future release.
-
-**Q: Does PassQuantum have a mobile app?**  
-A: Not yet. iOS and Android apps are in the roadmap.
-
-**Q: Can I generate random passwords in PassQuantum?**  
-A: Not yet, but a password generator is planned.
-
----
-
-### Troubleshooting Questions
-
-**Q: Why is vault unlock so slow (~2 seconds)?**  
-A: This is intentional. Argon2id key derivation is designed to be slow to prevent brute-force attacks. The 64MB memory requirement makes password guessing expensive.
-
-**Q: Why does my password list take a while to display?**  
-A: Each password must be decrypted individually. With 100+ passwords, this can take 1-2 seconds. This is expected behavior.
-
-**Q: Can I speed up vault unlocking?**  
-A: You can reduce Argon2id parameters in the code, but this significantly weakens security. Not recommended.
-
-**Q: My vault file is growing large. How do I compact it?**  
-A: Go to **Settings** → **Vault Tab** → **Compact Vault**. This removes deleted entries and optimizes storage.
-
----
-
-## Getting Help
-
-### Documentation
-
-- **README.md**: Project overview and quick start
-- **ARCHITECTURE.md**: Technical architecture and API reference  
-- **USER_EXPERIENCE.md**: This document - complete user guide
-
-### Community Support
-
-- **GitHub Issues**: Report bugs and request features
-- **GitHub Discussions**: Ask questions and share tips
-- **Email Support**: security@passquantum.example.com (for security issues only)
-
-### Reporting Bugs
-
-When reporting a bug, please include:
-1. **Operating System** and version
-2. **PassQuantum version**
-3. **Steps to reproduce** the issue
-4. **Expected behavior** vs **actual behavior**
-5. **Error messages** (if any)
-6. **Screenshots** (if applicable)
-
-**Do NOT include**:
-- Your master password
-- Your private key
-- Your vault files
-- Decrypted passwords
-
----
-
-**PassQuantum** - Your passwords, quantum-safe and secure. 🔐✨
-
+That is the current implemented experience; the docs should not present backup/export/import or online support flows as fully shipped features.

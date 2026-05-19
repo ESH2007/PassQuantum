@@ -445,7 +445,7 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 			defer ns.appState.mu.Unlock()
 
 			vaultFile := GetVaultPath(ns.appState.currentVault)
-			entries, err := ReadVault(vaultFile, ns.appState.encryptionKey, ns.appState.verificationKey)
+			entries, err := ReadVault(vaultFile, ns.appState.masterPassword)
 			if err != nil {
 				fyne.Do(func() {
 					ShowAppError(fmt.Errorf("failed to read vault: %w", err), ns.window)
@@ -480,7 +480,7 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 
 			entries = append(entries, entry)
 
-			err = WriteVault(entries, vaultFile, ns.appState.encryptionKey, ns.appState.verificationKey, ns.appState.kdfParams)
+			err = WriteVault(entries, vaultFile, ns.appState.masterPassword)
 			if err != nil {
 				fyne.Do(func() {
 					ShowAppError(fmt.Errorf("failed to save vault item: %v", err), ns.window)
@@ -970,7 +970,7 @@ func showSaveGeneratedPasswordDialog(w fyne.Window, fyneApp fyne.App, appState *
 				defer appState.mu.Unlock()
 
 				vaultFile := GetVaultPath(selectedVault)
-				entries, err := ReadVault(vaultFile, appState.encryptionKey, appState.verificationKey)
+				entries, err := ReadVault(vaultFile, appState.masterPassword)
 				if err != nil {
 					fyne.Do(func() {
 						ShowAppError(fmt.Errorf("failed to read vault: %w", err), w)
@@ -1004,7 +1004,7 @@ func showSaveGeneratedPasswordDialog(w fyne.Window, fyneApp fyne.App, appState *
 
 				entries = append(entries, entry)
 
-				err = WriteVault(entries, vaultFile, appState.encryptionKey, appState.verificationKey, appState.kdfParams)
+				err = WriteVault(entries, vaultFile, appState.masterPassword)
 				if err != nil {
 					fyne.Do(func() {
 						ShowAppError(fmt.Errorf("failed to save vault item: %v", err), w)

@@ -22,10 +22,9 @@ type StartupAccessState struct {
 }
 
 type preparedVaultRotation struct {
-	path      string
-	tempPath  string
-	data      []byte
-	kdfParams crypto.KDFParams
+	path     string
+	tempPath string
+	data     []byte
 }
 
 func ResolveStartupAccessState(appState *AppState) (StartupAccessState, error) {
@@ -118,25 +117,11 @@ func createVaultWithUnlockedSession(appState *AppState, vaultName string) error 
 		return fmt.Errorf("vault '%s' already exists", vaultName)
 	}
 
-	kdfParams := crypto.DefaultKDFParams()
-	var err error
-	kdfParams.Salt, err = crypto.GenerateSalt()
-	if err != nil {
+	if err := WriteVault([]*model.VaultEntry{}, vaultFile, appState.masterPassword); err != nil {
 		return err
 	}
 
-	encryptionKey, verificationKey, err := crypto.DeriveKeys(appState.masterPassword, kdfParams)
-	if err != nil {
-		return err
-	}
-
-	if err := WriteVault([]*model.VaultEntry{}, vaultFile, encryptionKey, verificationKey, kdfParams); err != nil {
-		crypto.WipeBytes(encryptionKey)
-		crypto.WipeBytes(verificationKey)
-		return err
-	}
-
-	appState.storeCurrentVaultState(vaultName, kdfParams, encryptionKey, verificationKey)
+	appState.storeCurrentVaultState(vaultName)
 	return nil
 }
 
@@ -146,28 +131,11 @@ func openVaultWithUnlockedSession(appState *AppState, vaultName string) error {
 	}
 
 	vaultFile := GetVaultPath(vaultName)
-	vaultData, err := os.ReadFile(vaultFile)
-	if err != nil {
-		return fmt.Errorf("failed to read vault file: %w", err)
-	}
-
-	vault, err := crypto.VaultFileDeserialize(vaultData)
-	if err != nil {
-		return fmt.Errorf("invalid vault file: %w", err)
-	}
-
-	encryptionKey, verificationKey, err := crypto.DeriveKeys(appState.masterPassword, vault.KDFParams)
-	if err != nil {
-		return fmt.Errorf("failed to derive vault keys: %w", err)
-	}
-
-	if _, err := storage.ReadVault(vaultFile, encryptionKey, verificationKey); err != nil {
-		crypto.WipeBytes(encryptionKey)
-		crypto.WipeBytes(verificationKey)
+	if _, err := storage.ReadVault(vaultFile, appState.masterPassword); err != nil {
 		return fmt.Errorf("failed to open vault with the unlocked global master password: %w", err)
 	}
 
-	appState.storeCurrentVaultState(vaultName, vault.KDFParams, encryptionKey, verificationKey)
+	appState.storeCurrentVaultState(vaultName)
 	return nil
 }
 
@@ -213,17 +181,16 @@ func changeMasterPassword(appState *AppState, currentPassword string, newPasswor
 			return fmt.Errorf("failed to read vault %s: %w", vaultName, err)
 		}
 
-		rotatedData, rotatedParams, err := storage.ReencryptVaultFile(vaultPath, currentPassword, newPassword)
+		rotatedData, err := storage.ReencryptVaultFile(vaultPath, currentPassword, newPassword)
 		if err != nil {
 			return fmt.Errorf("failed to rotate vault %s: %w", vaultName, err)
 		}
 
 		originalVaultData[vaultPath] = currentData
 		preparedVaults = append(preparedVaults, preparedVaultRotation{
-			path:      vaultPath,
-			tempPath:  vaultPath + ".tmp",
-			data:      rotatedData,
-			kdfParams: rotatedParams,
+			path:     vaultPath,
+			tempPath: vaultPath + ".tmp",
+			data:     rotatedData,
 		})
 	}
 
@@ -296,29 +263,10 @@ func changeMasterPassword(appState *AppState, currentPassword string, newPasswor
 
 	appState.storeUnlockedSession(newPassword, newProfile, sessionEncryptionKey, sessionVerificationKey)
 
-	if appState.currentVault == "" {
-		appState.mu.Lock()
-		appState.kdfParams = crypto.KDFParams{}
-		crypto.WipeBytes(appState.encryptionKey)
-		crypto.WipeBytes(appState.verificationKey)
-		appState.encryptionKey = nil
-		appState.verificationKey = nil
-		appState.mu.Unlock()
-		return nil
-	}
-
-	for _, preparedVault := range preparedVaults {
-		if preparedVault.path != GetVaultPath(appState.currentVault) {
-			continue
-		}
-
-		currentEncryptionKey, currentVerificationKey, err := crypto.DeriveKeys(newPassword, preparedVault.kdfParams)
-		if err != nil {
-			return fmt.Errorf("failed to derive updated keys for current vault: %w", err)
-		}
-
-		appState.storeCurrentVaultState(appState.currentVault, preparedVault.kdfParams, currentEncryptionKey, currentVerificationKey)
-		break
+	// If a vault was open, update masterPassword in state so subsequent reads
+	// use the new password. storeCurrentVaultState keeps currentVault name.
+	if appState.currentVault != "" {
+		appState.storeCurrentVaultState(appState.currentVault)
 	}
 
 	return nil
@@ -339,36 +287,24 @@ func (appState *AppState) storeUnlockedSession(masterPassword string, profile *c
 	crypto.WipeBytes(sessionVerificationKey)
 }
 
-func (appState *AppState) storeCurrentVaultState(vaultName string, kdfParams crypto.KDFParams, encryptionKey []byte, verificationKey []byte) {
+func (appState *AppState) storeCurrentVaultState(vaultName string) {
 	appState.mu.Lock()
 	defer appState.mu.Unlock()
 
-	crypto.WipeBytes(appState.encryptionKey)
-	crypto.WipeBytes(appState.verificationKey)
 	appState.currentVault = vaultName
-	appState.kdfParams = kdfParams
-	appState.encryptionKey = append([]byte(nil), encryptionKey...)
-	appState.verificationKey = append([]byte(nil), verificationKey...)
 	appState.isUnlocked = true
-	crypto.WipeBytes(encryptionKey)
-	crypto.WipeBytes(verificationKey)
 }
 
 func (appState *AppState) clearSensitiveState() {
 	appState.mu.Lock()
 	defer appState.mu.Unlock()
 
-	crypto.WipeBytes(appState.encryptionKey)
-	crypto.WipeBytes(appState.verificationKey)
 	crypto.WipeBytes(appState.sessionEncryptionKey)
 	crypto.WipeBytes(appState.sessionVerificationKey)
-	appState.encryptionKey = nil
-	appState.verificationKey = nil
 	appState.sessionEncryptionKey = nil
 	appState.sessionVerificationKey = nil
 	appState.masterPassword = ""
 	appState.currentVault = ""
-	appState.kdfParams = crypto.KDFParams{}
 	appState.isUnlocked = false
 	appState.securityProfile = nil
 	appState.startupWarning = ""

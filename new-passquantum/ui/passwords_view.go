@@ -50,7 +50,7 @@ func ShowPasswordsView(w fyne.Window, fyneApp fyne.App, appState *AppState) {
 		defer appState.mu.Unlock()
 
 		vaultFile := GetVaultPath(appState.currentVault)
-		entries, err := ReadVault(vaultFile, appState.encryptionKey, appState.verificationKey)
+		entries, err := ReadVault(vaultFile, appState.masterPassword)
 		if err != nil {
 			fyne.Do(func() {
 				ShowAppError(fmt.Errorf("failed to read vault: %w", err), w)
@@ -310,7 +310,7 @@ func createPasswordCard(index int, entry *model.VaultEntry, password string, w f
 				defer appState.mu.Unlock()
 
 				vaultFile := GetVaultPath(appState.currentVault)
-				entries, err := ReadVault(vaultFile, appState.encryptionKey, appState.verificationKey)
+				entries, err := ReadVault(vaultFile, appState.masterPassword)
 				if err != nil {
 					fyne.Do(func() {
 						ShowAppError(fmt.Errorf("failed to read vault: %w", err), w)
@@ -356,7 +356,7 @@ func createPasswordCard(index int, entry *model.VaultEntry, password string, w f
 					return
 				}
 
-				err = WriteVault(entries, vaultFile, appState.encryptionKey, appState.verificationKey, appState.kdfParams)
+				err = WriteVault(entries, vaultFile, appState.masterPassword)
 				if err != nil {
 					fyne.Do(func() {
 						ShowAppError(fmt.Errorf("failed to save vault: %w", err), w)
@@ -408,7 +408,7 @@ func deleteEntryByID(entryID uint64, entryKind string, w fyne.Window, fyneApp fy
 		defer appState.mu.Unlock()
 
 		vaultFile := GetVaultPath(appState.currentVault)
-		entries, err := ReadVault(vaultFile, appState.encryptionKey, appState.verificationKey)
+		entries, err := ReadVault(vaultFile, appState.masterPassword)
 		if err != nil {
 			fyne.Do(func() {
 				ShowAppError(fmt.Errorf("failed to read vault: %w", err), w)
@@ -423,7 +423,7 @@ func deleteEntryByID(entryID uint64, entryKind string, w fyne.Window, fyneApp fy
 			}
 		}
 
-		err = WriteVault(newEntries, vaultFile, appState.encryptionKey, appState.verificationKey, appState.kdfParams)
+		err = WriteVault(newEntries, vaultFile, appState.masterPassword)
 		if err != nil {
 			fyne.Do(func() {
 				ShowAppError(fmt.Errorf("failed to delete %s: %w", entryKind, err), w)
@@ -608,7 +608,7 @@ func ShowPasswordGenerator(w fyne.Window, fyneApp fyne.App, appState *AppState) 
 					// Use appState keys directly - they now match the selected vault
 					vaultFile := GetVaultPath(selectedVault)
 
-					entries, err := ReadVault(vaultFile, appState.encryptionKey, appState.verificationKey)
+					entries, err := ReadVault(vaultFile, appState.masterPassword)
 					if err != nil {
 						fyne.Do(func() {
 							ShowAppError(fmt.Errorf("failed to read vault: %w", err), w)
@@ -640,11 +640,7 @@ func ShowPasswordGenerator(w fyne.Window, fyneApp fyne.App, appState *AppState) 
 
 					// CRITICAL FIX: Use appState keys directly - they match the selected vault
 					// Previously this used stale snapshotted keys from before vault switch
-					err = WriteVault(entries, vaultFile,
-						appState.encryptionKey,
-						appState.verificationKey,
-						appState.kdfParams,
-					)
+					err = WriteVault(entries, vaultFile, appState.masterPassword)
 
 					if err != nil {
 						fyne.Do(func() { ShowAppError(err, w) })
@@ -941,7 +937,7 @@ func ShowPasswordGeneratorNoVault(w fyne.Window, fyneApp fyne.App, appState *App
 					defer appState.mu.Unlock()
 
 					vaultFile := GetVaultPath(selectedVault)
-					entries, err := ReadVault(vaultFile, appState.encryptionKey, appState.verificationKey)
+					entries, err := ReadVault(vaultFile, appState.masterPassword)
 					if err != nil {
 						fyne.Do(func() {
 							ShowAppError(fmt.Errorf("failed to read vault: %w", err), w)
@@ -975,7 +971,7 @@ func ShowPasswordGeneratorNoVault(w fyne.Window, fyneApp fyne.App, appState *App
 
 					entries = append(entries, entry)
 
-					err = WriteVault(entries, vaultFile, appState.encryptionKey, appState.verificationKey, appState.kdfParams)
+					err = WriteVault(entries, vaultFile, appState.masterPassword)
 					if err != nil {
 						fyne.Do(func() {
 							ShowAppError(fmt.Errorf("failed to save vault: %w", err), w)

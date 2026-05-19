@@ -10,31 +10,29 @@ import (
 
 const DefaultVaultFile = "vault.pqdb"
 
-// WriteVault encrypts and writes vault entries to a vault file.
-// All data is encrypted - no plaintext stored
-func WriteVault(entries []*model.VaultEntry, vaultPath string, encryptionKey []byte, verificationKey []byte, kdfParams crypto.KDFParams) error {
+// WriteVault encrypts and writes vault entries using the PQ vault format.
+// The password is the user's master password; all KDF and key material is
+// derived internally on each call.
+func WriteVault(entries []*model.VaultEntry, vaultPath string, password string) error {
 	plaintext := serializeEntries(entries)
 
-	// Encrypt the vault
-	vault, err := crypto.EncryptVault(plaintext, encryptionKey, verificationKey, kdfParams)
+	vaultData, err := crypto.PQVaultEncrypt(plaintext, password)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt vault: %w", err)
 	}
 
-	// Write to disk
-	vaultData := vault.Serialize()
-	err = os.WriteFile(vaultPath, vaultData, 0600)
-	if err != nil {
+	if err := os.WriteFile(vaultPath, vaultData, 0600); err != nil {
 		return fmt.Errorf("failed to write vault file: %w", err)
 	}
 
 	return nil
 }
 
-// ReadVault reads and decrypts a vault file
-// Returns the decrypted vault entries.
-func ReadVault(vaultPath string, encryptionKey []byte, verificationKey []byte) ([]*model.VaultEntry, error) {
-	// Read vault file from disk
+// ReadVault reads and decrypts a vault file.
+// It auto-detects the vault format:
+//   - "PQVT" magic → PQ vault (Argon2id + Kyber-768 KEM + Dilithium3 signature)
+//   - legacy format → auto-migrated on first open (re-encrypted to PQ format in-place)
+func ReadVault(vaultPath string, password string) ([]*model.VaultEntry, error) {
 	vaultData, err := os.ReadFile(vaultPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -43,16 +41,26 @@ func ReadVault(vaultPath string, encryptionKey []byte, verificationKey []byte) (
 		return nil, fmt.Errorf("failed to read vault file: %w", err)
 	}
 
-	// Deserialize vault file
-	vault, err := crypto.VaultFileDeserialize(vaultData)
-	if err != nil {
-		return nil, fmt.Errorf("failed to deserialize vault: %w", err)
-	}
+	var plaintext []byte
 
-	// Decrypt vault
-	plaintext, err := crypto.DecryptVault(vault, encryptionKey, verificationKey)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decrypt vault: %w", err)
+	if crypto.IsPQVaultFormat(vaultData) {
+		plaintext, err = crypto.PQVaultDecrypt(vaultData, password)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt vault: %w", err)
+		}
+	} else {
+		// Legacy format (Argon2id + HMAC-SHA256 + AES-256-GCM).
+		// Auto-migrate: decrypt with old scheme, re-encrypt with PQ format, write back.
+		plaintext, err = decryptLegacyVault(vaultData, password)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decrypt legacy vault (wrong password?): %w", err)
+		}
+
+		// Re-encrypt with the new PQ format and write back immediately.
+		newData, migrateErr := crypto.PQVaultEncrypt(plaintext, password)
+		if migrateErr == nil {
+			_ = os.WriteFile(vaultPath, newData, 0600) // best-effort; don't fail the read
+		}
 	}
 
 	entries, err := deserializeEntries(plaintext)
@@ -63,13 +71,34 @@ func ReadVault(vaultPath string, encryptionKey []byte, verificationKey []byte) (
 	return entries, nil
 }
 
-// VaultExists checks if the vault file exists
+// decryptLegacyVault decrypts a vault file written in the pre-PQ format:
+//
+//	Version(1) | KDFParamsLen(1) | KDFParams(26) | HMAC(32) | EncDataLen(4) | EncData
+func decryptLegacyVault(data []byte, password string) ([]byte, error) {
+	vault, err := crypto.VaultFileDeserialize(data)
+	if err != nil {
+		return nil, fmt.Errorf("invalid legacy vault header: %w", err)
+	}
+
+	encKey, verKey, err := crypto.DeriveKeys(password, vault.KDFParams)
+	if err != nil {
+		return nil, fmt.Errorf("key derivation failed: %w", err)
+	}
+
+	plaintext, err := crypto.DecryptVault(vault, encKey, verKey)
+	if err != nil {
+		return nil, err
+	}
+	return plaintext, nil
+}
+
+// VaultExists checks if the vault file exists.
 func VaultExists(vaultPath string) bool {
 	_, err := os.Stat(vaultPath)
 	return err == nil
 }
 
-// DeleteVault removes the vault file (careful - data loss!)
+// DeleteVault removes the vault file (destructive — data loss!).
 func DeleteVault(vaultPath string) error {
 	return os.Remove(vaultPath)
 }

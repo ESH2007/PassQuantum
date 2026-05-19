@@ -101,13 +101,13 @@ func OpenVault(w interface{}, fyneApp interface{}, appState *AppState, vaultName
 // Storage wrappers that use the core storage package
 
 // ReadVault reads and decrypts a vault file and returns parsed entries
-func ReadVault(vaultFile string, encryptionKey, verificationKey []byte) ([]*model.VaultEntry, error) {
-	return storage.ReadVault(vaultFile, encryptionKey, verificationKey)
+func ReadVault(vaultFile string, password string) ([]*model.VaultEntry, error) {
+	return storage.ReadVault(vaultFile, password)
 }
 
 // WriteVault encrypts and writes a vault file
-func WriteVault(entries []*model.VaultEntry, vaultFile string, encryptionKey, verificationKey []byte, kdfParams crypto.KDFParams) error {
-	return storage.WriteVault(entries, vaultFile, encryptionKey, verificationKey, kdfParams)
+func WriteVault(entries []*model.VaultEntry, vaultFile string, password string) error {
+	return storage.WriteVault(entries, vaultFile, password)
 }
 
 // Crypto wrappers
@@ -151,7 +151,7 @@ type PasswordValidationResult struct {
 // 1. Length must be > 8 characters
 // 2. Must contain special characters
 // 3. Must NOT already exist in the vault
-func ValidatePassword(password string, vaultFile string, encryptionKey, verificationKey []byte, privateKey *kyber768.PrivateKey) PasswordValidationResult {
+func ValidatePassword(password string, vaultFile string, masterPassword string, privateKey *kyber768.PrivateKey) PasswordValidationResult {
 	result := PasswordValidationResult{
 		Valid:    true,
 		Warnings: []string{},
@@ -185,7 +185,7 @@ func ValidatePassword(password string, vaultFile string, encryptionKey, verifica
 	}
 
 	// Rule 3: Must NOT already exist in the vault
-	entries, err := ReadVault(vaultFile, encryptionKey, verificationKey)
+	entries, err := ReadVault(vaultFile, masterPassword)
 	if err != nil {
 		// If we can't read the vault, we can't check for duplicates
 		// But we don't want to block the user, so we just warn

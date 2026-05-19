@@ -1,540 +1,409 @@
-# PassQuantum - Technical Architecture
+# PassQuantum Architecture
 
-> Comprehensive technical documentation covering cryptographic design, system architecture, module APIs, and implementation details.
+This document describes the current implementation in `new-passquantum/` as shipped by the Go, Python, and build files in the repository.
 
-## 📋 Table of Contents
+## 1. System overview
 
-- [System Overview](#system-overview)
-- [Architecture Patterns](#architecture-patterns)
-- [Cryptographic Design](#cryptographic-design)
-- [Module Reference](#module-reference)
-- [Data Models](#data-models)
-- [Storage Format](#storage-format)
-- [Security Properties](#security-properties)
-- [API Reference](#api-reference)
-- [Performance Characteristics](#performance-characteristics)
-- [Testing Guidelines](#testing-guidelines)
+PassQuantum is a desktop password manager with four major runtime concerns:
 
----
+1. **App access control**
+   - Global master-password unlock
+   - Private-key fingerprint binding
+   - Session key management
 
-## System Overview
+2. **Vault storage**
+   - Multiple vault files under `vaults/`
+   - Authenticated vault encryption
+   - Typed vault entries for passwords, notes, and cards
 
-PassQuantum is built with a clean, modular architecture that separates concerns across four main packages:
+3. **Desktop UX**
+   - Fyne windowing and navigation
+   - Password generator and checker
+   - Visual customization
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                      UI Layer (ui/)                     │
-│  • Fyne desktop GUI                                     │
-│  • User interaction handling                            │
-│  • Screen navigation                                    │
-└──────────────────┬──────────────────────────────────────┘
-                   │
-        ┌──────────┴──────────────────────┐
-        │                                 │
-        ▼                                 ▼
-┌──────────────────┐            ┌──────────────────┐
-│  Storage Layer   │            │  Crypto Layer    │
-│   (storage/)     │            │   (crypto/)      │
-│  • Vault I/O     │            │  • Kyber768      │
-│  • File mgmt     │            │  • AES-256-GCM   │
-│  • Serialization │            │  • Argon2id KDF  │
-└──────────────────┘            └──────────────────┘
-        │                                 │
-        └──────────┬────────────────────┬─┘
-                   │                    │
-                   ▼                    ▼
-            ┌──────────────────┐
-            │   Model Layer    │
-            │    (model/)      │
-            │  • Data structs  │
-            │  • Entry format  │
-            └──────────────────┘
-```
+4. **Face guard**
+   - Python sidecar process
+   - Local face training and monitoring
+   - Lock-on-face-loss behavior
+   - Optional process kill list
 
-### Design Principles
+## 2. High-level module map
 
-1. **Separation of Concerns**: Each package has a single, well-defined responsibility
-2. **No Global State**: All state passed as function parameters or in structs
-3. **Testability**: Core packages have no UI dependencies
-4. **Security by Default**: Sensible defaults, fail-secure error handling
-5. **Modularity**: Easy to swap implementations or add features
+```text
+ui/
+  main.go                 app startup, window, AppState, face-guard wiring
+  access_control.go       app unlock, vault open, master-password rotation
+  login_screen.go         create/unlock flow
+  vault_selection.go      vault list/create/delete/open
+  main_screen.go          main sidebar and content views
+  passwords_view.go       decrypt/display/edit/copy/delete items
+  settings_screen.go      Security, Vaults, Visuals, About
+  nativefile.go           OS-native image picker integration
+  face_guard.go           Go <-> Python bridge
+  python_bundle*.go       embedded face bundle extraction
+  app.manifest            Windows compatibility and DPI manifest
 
----
+core/crypto/
+  kdf.go                  Argon2id + domain-separated keys
+  vault.go                vault container encryption and HMAC
+  kyber.go                Kyber768 key operations
+  aes.go                  AES-GCM item payload helpers
+  app_security.go         global master-password verifier profile
 
-## Architecture Patterns
+core/storage/
+  storage.go              encrypted vault read/write
+  vault_format.go         typed vault payload format and legacy decode
+  security_metadata.go    app-security metadata save/load and vault rotation
 
-### Package Organization
+core/model/
+  vault_entry.go          typed entry model and serialization
 
-```
-new-passquantum/
-├── core/
-│   ├── crypto/        # Cryptographic primitives (pure functions)
-│   ├── model/         # Data structures and serialization
-│   └── storage/       # File I/O operations
-└── ui/               # User interface (Fyne-based)
+strength/
+  analyzer.go             password analysis pipeline
+  *.go                    entropy, similarity, patterns, easter egg rules
+
+palette/
+  extractor.go            image color sampling and k-means clustering
+
+top-level helpers
+  auth_server.py          alternate JSON IPC server for face auth experiments
+  Build-FaceBundle.ps1    Windows self-contained build pipeline
+  build.sh                Linux/cross-platform build pipeline
+  build-native.sh         simple native Linux build
 ```
 
-### Dependency Flow
+## 3. Runtime architecture
 
-```
-UI → Storage → Crypto
-     ↓         ↓
-     Model ←───┘
-```
+### 3.1 Startup flow
 
-**Rules**:
-- UI can import all other packages
-- Storage can import crypto and model
-- Crypto can import model (for entry encryption)
-- Model is self-contained (no imports from other packages)
+`ui/main.go` performs startup in this order:
 
-### Data Flow
+1. Normalize locale for Fyne
+2. Create the Fyne app and main window
+3. Restore icon/theme preferences
+4. Load or generate `public.key` and `private.key`
+5. Start the face-guard bridge if possible
+6. Register the global lock callback
+7. Show the master-password screen
 
-#### Adding a Password
-```
-1. User Input (UI)
-   ↓
-2. Validation
-   ↓
-3. Kyber Encapsulation (crypto/kyber.go)
-   ↓
-4. AES Encryption (crypto/aes.go)
-   ↓
-5. Create Entry (model/vault_entry.go)
-   ↓
-6. Serialize & Encrypt Vault (crypto/vault.go)
-   ↓
-7. Write to Disk (storage/storage.go)
-   ↓
-8. UI Feedback
-```
+### 3.2 Access control flow
 
-#### Viewing Passwords
-```
-1. Read Vault (storage/storage.go)
-   ↓
-2. Decrypt Vault (crypto/vault.go)
-   ↓
-3. Parse Entries (model/vault_entry.go)
-   ↓
-4. For each entry:
-   - Kyber Decapsulation (crypto/kyber.go)
-   - AES Decryption (crypto/aes.go)
-   ↓
-5. Display in UI
-```
+`ui/access_control.go` drives startup access:
 
----
+- If `app-security.pqmeta` does not exist:
+  - setup is required
+- If the stored profile fingerprint does not match the loaded `private.key`:
+  - setup is required again and a warning is shown
+- Otherwise:
+  - the user is prompted to unlock the app
 
-## Cryptographic Design
+Once unlocked:
 
-### Key Hierarchy
+- app-level session keys are stored in `AppState`
+- the global master password remains available in memory for vault opening and rotation
+- continuous face monitoring is started
 
-```
-User Master Password (user input)
-    ↓
-┌─────────────────────────────────────────────────┐
-│ Argon2id Key Derivation Function                │
-│ • Memory: 64 MB (GPU-resistant)                 │
-│ • Iterations: 1 (interactive use)               │
-│ • Parallelism: 4 threads                        │
-│ • Salt: 16 bytes (cryptographically random)     │
-└─────────────────────────────────────────────────┘
-    ↓
-Master Key (64 bytes)
-    ↓
-┌─────────────────────────────────────────────────┐
-│ Domain Separation (SHA-256 with label)          │
-│ • Prevents key reuse across purposes            │
-│ • Counter-mode expansion                        │
-└─────────────────────────────────────────────────┘
-    ↓
-    ├─ Label "encryption" → Encryption Key (32 bytes)
-    │  └─ AES-256-GCM for vault encryption
-    │
-    └─ Label "verification" → Verification Key (32 bytes)
-       └─ HMAC-SHA256 for integrity
-```
+### 3.3 Vault flow
 
-### Encryption Pipeline
+Every vault is stored as `vaults/<name>.pqdb`.
 
-#### Vault-Level Encryption
-```
-1. Serialize all vault entries → Plaintext
-2. Generate random 12-byte nonce
-3. AES-256-GCM(plaintext, encryption_key, nonce) → Ciphertext
-4. HMAC-SHA256(version + kdf_params + ciphertext, verification_key) → MAC
-5. Write: Version | KDF Params | MAC | Nonce | Ciphertext
+Opening a vault:
+
+1. Read the vault file
+2. Deserialize its KDF params
+3. Derive vault keys from the unlocked global master password and the vault salt
+4. Verify and decrypt the vault
+5. Cache the current vault state in `AppState`
+
+Creating a vault:
+
+1. Generate new vault salt
+2. Derive fresh vault keys from the unlocked global password
+3. Write an empty encrypted vault file
+
+Changing the master password:
+
+1. Verify the current password against `app-security.pqmeta`
+2. Re-encrypt every vault with keys derived from the new password
+3. Write staged `.tmp` files
+4. Replace vault files and metadata atomically
+
+## 4. Data layout
+
+### 4.1 App security profile
+
+`app-security.pqmeta` is JSON persisted by `core/storage/security_metadata.go`.
+
+It stores:
+
+- `format_version`
+- `private_key_fingerprint`
+- `kdf_params`
+- `verifier`
+
+It does **not** store the master password itself.
+
+### 4.2 Vault file format
+
+`core/crypto/vault.go` stores:
+
+```text
+Version (1 byte)
+KDF params length (1 byte)
+KDF params (26 bytes)
+HMAC-SHA256 (32 bytes)
+Encrypted data length (4 bytes)
+Encrypted data (nonce + AES-GCM ciphertext)
 ```
 
-#### Entry-Level Encryption (Individual Password)
-```
-1. Kyber768.Encapsulate(public_key) → (kyber_ct, shared_secret)
-2. Generate random 12-byte nonce
-3. AES-256-GCM(password, shared_secret, nonce) → Ciphertext
-4. Create Entry: ID | Service | Username | Kyber_CT | Nonce | Ciphertext
-```
+### 4.3 Vault plaintext format
 
-### Cryptographic Primitives
+Inside the encrypted vault payload, `core/storage/vault_format.go` uses:
 
-| Component | Algorithm | Key Size | Notes |
-|-----------|-----------|----------|-------|
-| KDF | Argon2id | 64 bytes output | Memory-hard, GPU-resistant |
-| Vault Encryption | AES-256-GCM | 256 bits | Authenticated encryption |
-| Integrity | HMAC-SHA256 | 256 bits | Prevents tampering |
-| Key Expansion | SHA-256 | 256 bits | Domain separation |
-| Post-Quantum KEM | Kyber768 | ~1184 bytes CT | NIST PQC standard |
-| Entry Encryption | AES-256-GCM | 256 bits | Per-password encryption |
-
----
-
-## Module Reference
-
-### core/crypto - Cryptographic Operations
-
-#### kdf.go - Key Derivation
-- **DefaultKDFParams()**: Returns secure default parameters
-- **GenerateSalt()**: Creates cryptographically random 16-byte salt
-- **DeriveKeys()**: Derives encryption and verification keys from master password
-- **KDFParams.Serialize()**: Encodes parameters for storage
-- **WipeBytes()**: Securely zeros out sensitive data
-
-#### vault.go - Vault Encryption
-- **EncryptVault()**: Encrypts vault contents with AES-256-GCM and computes HMAC
-- **DecryptVault()**: Decrypts vault and verifies HMAC
-- **VaultFile.Serialize()**: Converts vault to binary format
-- **VaultFileDeserialize()**: Parses vault from binary format
-
-#### kyber.go - Post-Quantum KEM
-- **GenerateKeypair()**: Creates new Kyber768 keypair
-- **LoadKeypair()**: Loads keypair from disk
-- **SaveKeypair()**: Saves keypair with proper permissions
-- **Encapsulate()**: Generates shared secret and ciphertext
-- **Decapsulate()**: Recovers shared secret from ciphertext
-
-#### aes.go - Symmetric Encryption
-- **EncryptAES256GCM()**: Encrypts plaintext with AES-256-GCM
-- **DecryptAES256GCM()**: Decrypts ciphertext with AES-256-GCM
-
-### core/model - Data Structures
-
-#### vault_entry.go
-```go
-type VaultEntry struct {
-    ID              uint64   // Unique entry identifier
-   Type            EntryType
-   CardSubtype     string
-    Service         string   // Service/website name
-    Username        string   // Associated username or email
-    KyberCiphertext []byte   // Kyber768 encapsulated secret
-    Nonce           []byte   // AES-GCM nonce (12 bytes)
-   Ciphertext      []byte   // AES-256-GCM encrypted entry payload
-}
+```text
+PQV2
+EntryCount (uint32)
+Repeated:
+  EntryLength (uint32)
+  TypedEntry
 ```
 
-- **NewVaultEntry()**: Creates entry with random ID
-- **Serialize()**: Converts entry to binary format
-- **Deserialize()**: Parses entry from binary format
+The code still supports legacy entry decoding for older vault payloads.
 
-### core/storage - File I/O
+### 4.4 Typed entry model
 
-#### storage.go
-- **WriteVault()**: Encrypts and writes entire vault to disk
-- **ReadVault()**: Reads and decrypts vault from disk
-- **VaultExists()**: Checks if vault file exists
-- **DeleteVault()**: Removes vault file from disk
+`core/model/vault_entry.go` supports:
 
-### ui - User Interface
+- `EntryTypePassword`
+- `EntryTypeNote`
+- `EntryTypeCard`
 
-#### main.go - Application Entry
-- **initializeApp()**: Loads or creates Kyber keypair
-- **main()**: Application entry point
+Each entry stores:
 
-#### login_screen.go - Authentication
-- **PromptMasterPassword()**: Displays login/creation screen
+- random `ID`
+- `Type`
+- `CardSubtype`
+- `Service`
+- `Username`
+- `KyberCiphertext`
+- `Nonce`
+- `Ciphertext`
 
-#### vault_selection.go - Vault Management 
-- **ShowVaultSelection()**: Displays vault list and management
-- **createVaultCard()**: Creates vault card UI component
+## 5. Cryptographic layering
 
-#### main_screen.go - Vault Manager
-- **ShowMainScreen()**: Main vault item entry interface
+### 5.1 App-level unlock
 
-#### passwords_view.go - Vault Item Display
-- **ShowPasswordsView()**: Displays all vault items in a vault
-- **createPasswordCard()**: Creates individual password card
+`core/crypto/app_security.go`:
 
-#### settings_screen.go - Settings
-- **ShowSettingsScreen()**: Tabbed settings interface
-- **buildSecuritySettings()**: Security tab
-- **buildVaultSettings()**: Vault management tab
-- **buildDisplaySettings()**: Display customization tab
-- **buildBackupSettings()**: Backup configuration tab
-- **buildAboutSettings()**: About/info tab
+- derives keys with Argon2id
+- computes a verifier from:
+  - a fixed app label
+  - the private-key fingerprint
+  - the verification key
 
-#### helpers.go - Utilities
-- **ListVaults()**: Returns all available vault names
-- **GetVaultPath()**: Returns full path for vault file
-- **CreateNewVault()**: Creates encrypted vault with master password
-- **UnlockVault()**: Decrypts existing vault
-- **AddPasswordToVault()**: Encrypts and adds password
-- **DeletePasswordFromVault()**: Removes password from vault
+This makes the app-level unlock profile unusable with a different `private.key`.
 
----
+### 5.2 Vault-level encryption
 
-## Data Models
+`core/crypto/kdf.go` and `core/crypto/vault.go` provide:
 
-### Vault File Structure
+- Argon2id with defaults:
+  - 64 MB memory
+  - 1 iteration
+  - parallelism 4
+- domain-separated encryption and verification keys
+- AES-256-GCM for vault payload encryption
+- HMAC-SHA256 for vault integrity
 
-```
-┌─────────────────────────────────────────────────────────┐
-│ HEADER                                                  │
-├─────────────────────────────────────────────────────────┤
-│ Version (1 byte): 0x01                                  │
-│ KDF Params Length (1 byte): 26                          │
-│ KDF Parameters (26 bytes):                              │
-│   • Salt (16 bytes)                                     │
-│   • Memory (4 bytes, uint32 big-endian)                │
-│   • Iterations (4 bytes, uint32 big-endian)            │
-│   • Parallelism (1 byte)                               │
-│   • Version (1 byte)                                   │
-├─────────────────────────────────────────────────────────┤
-│ INTEGRITY                                               │
-├─────────────────────────────────────────────────────────┤
-│ HMAC-SHA256 (32 bytes)                                  │
-├─────────────────────────────────────────────────────────┤
-│ ENCRYPTED DATA                                          │
-├─────────────────────────────────────────────────────────┤
-│ Encrypted Data Length (4 bytes, uint32)                │
-│ AES-GCM Nonce (12 bytes)                               │
-│ AES-GCM Ciphertext (variable + 16-byte tag)           │
-└─────────────────────────────────────────────────────────┘
-```
+### 5.3 Item-level secret wrapping
 
-### Entry Serialization Format
+Each vault item is also protected individually:
 
-```
-EntryID (8 bytes, uint64 big-endian)
-ServiceLen (2 bytes, uint16 big-endian)
-Service (variable UTF-8)
-UsernameLen (2 bytes, uint16 big-endian)
-Username (variable UTF-8)
-KyberLen (2 bytes, uint16 big-endian)
-KyberCiphertext (~1088 bytes)
-Nonce (12 bytes)
-CiphertextLen (2 bytes, uint16 big-endian)
-Ciphertext (variable + 16-byte tag)
-```
+1. Kyber768 encapsulation generates a shared secret
+2. AES-256-GCM encrypts the item payload with that shared secret
+3. The entry stores the Kyber ciphertext plus the AES nonce/ciphertext
 
----
+This is separate from the outer vault encryption layer.
 
-## Storage Format
+## 6. Face-guard subsystem
 
-### File Locations
-```
-new-passquantum/
-├── vaults/              # Encrypted vault files
-│   ├── Personal.pqdb    # Example vault
-│   ├── Work.pqdb        # Example vault
-│   └── Finance.pqdb     # Example vault
-├── public.key           # Kyber768 public key (1184 bytes)
-├── private.key          # Kyber768 private key (2400 bytes)
-└── passquantum          # Executable
-```
+### 6.1 Components
 
-### File Permissions
-- **vaults/*.pqdb**: 0600 (owner read/write only)
-- **private.key**: 0600 (owner read/write only)
-- **public.key**: 0644 (world readable)
+| File | Role |
+| --- | --- |
+| `ui/face_guard.go` | launches and talks to Python |
+| `ui/python_bundle.go` | embeds non-Windows bundle |
+| `ui/python_bundle_windows.go` | embeds Windows bundle |
+| `face_guard.py` | training + monitoring process |
+| `auth_server.py` | alternative JSON-over-socket face auth IPC server |
+| `geometric_encoder.py` | MediaPipe face-landmarker encoder |
+| `liveness_detector.py` | blink-based liveness gate |
+| `face_authenticator.py` | higher-level enroll/verify helper |
+| `models/face_landmarker.task` | required MediaPipe model asset |
 
----
+### 6.2 Wire protocol
 
-## Security Properties
+Python sends:
 
-### Threat Model
+- `FRAME:<base64 jpeg>`
+- `PROGRESS:<n>/<total>`
+- `TRAINING_DONE`
+- `FACE_OK`
+- `FACE_LOST`
 
-| Threat | Mitigation | Status |
-|--------|-----------|--------|
-| Offline brute-force | Argon2id (64MB) | ✅ Mitigated |
-| Vault tampering | HMAC-SHA256 | ✅ Detected |
-| Wrong password | HMAC + decrypt fail | ✅ Detected |
-| Nonce reuse | Random generation | ✅ Prevented |
-| Key derivation attacks | Domain separation | ✅ Prevented |
-| Post-quantum attacks | Kyber768 | ✅ Resistant |
-| Memory scraping | Wiping on lock | ⚠️ Partial |
-| Malware/keylogger | OS security | ❌ Out of scope |
+Go sends:
 
-### Security Assumptions
-1. User chooses strong master password
-2. Kyber private key is protected
-3. Operating system is trusted
-4. Crypto libraries are sound
-5. System entropy is available
+- `START_TRAINING`
+- `START_MONITOR`
 
----
+### 6.3 Behavior
 
-## API Reference
+Training:
 
-### Complete Function Signatures
+- captures 100 face samples
+- requires at least one blink
+- saves encodings to `face_data.npy`
 
-```go
-// KDF
-func DefaultKDFParams() KDFParams
-func GenerateSalt() ([]byte, error)
-func DeriveKeys(password string, params KDFParams) (encKey, verKey []byte, err error)
-func WipeBytes(data []byte)
+Monitoring:
 
-// Vault
-func EncryptVault(plaintext []byte, encKey, verKey []byte, params KDFParams) (*VaultFile, error)
-func DecryptVault(vault *VaultFile, encKey, verKey []byte) ([]byte, error)
+- waits for a recognized live face first
+- then continuously checks for a recognized face
+- sends `FACE_LOST` after 5 seconds of absence
+- sends `FACE_OK` when the face returns
 
-// Kyber
-func GenerateKeypair() (*kyber768.PublicKey, *kyber768.PrivateKey, error)
-func Encapsulate(publicKey *kyber768.PublicKeyfunc) (ciphertext, sharedSecret []byte, err error)
-func Decapsulate(ciphertext []byte, privateKey *kyber768.PrivateKey) (sharedSecret []byte, err error)
+Go reacts to `FACE_LOST` by:
 
-// AES
-func EncryptAES256GCM(plaintext string, sharedSecret []byte) (nonce, ciphertext []byte, err error)
-func DecryptAES256GCM(nonce, ciphertext, sharedSecret []byte) (plaintext string, err error)
+- locking the app
+- clearing sensitive state
+- killing monitored companion processes selected by the user
 
-// Model
-func NewVaultEntry() *VaultEntry
-func (e *VaultEntry) Serialize() []byte
-func Deserialize(data []byte) (*VaultEntry, error)
+## 7. UI architecture
 
-// Storage
-func WriteVault(entries []*model.VaultEntry, vaultPath string, 
-                encKey, verKey []byte, params crypto.KDFParams) error
-func ReadVault(vaultPath string, encKey, verKey []byte) ([]*model.VaultEntry, error)
-func VaultExists(vaultPath string) bool
-func DeleteVault(vaultPath string) error
+### 7.1 Main screens
 
-// UI Helpers
-func ListVaults() []string
-func GetVaultPath(vaultName string) string
-func CreateNewVault(w interface{}, appState *AppState, masterPassword, vaultName string) bool
-func UnlockVault(w interface{}, appState *AppState, vaultPath, masterPassword string) bool
-func AddPasswordToVault(appState *AppState, service, username, password string) error
-func DeletePasswordFromVault(appState *AppState, entryID uint64) error
+The user-visible flow is:
+
+```text
+Create/Unlock
+  -> Face Registration (first setup when needed)
+  -> Vault Selection
+  -> Main Sidebar Shell
+       -> Passwords
+       -> Generate
+       -> Check Password
+       -> Settings
 ```
 
----
+### 7.2 Sidebar views
 
-## Performance Characteristics
+`ui/main_screen.go` defines five primary views:
 
-### Computational Costs
+- Vaults
+- Passwords
+- Generate
+- Check Password
+- Settings
 
-| Operation | Time | Notes |
-|-----------|------|-------|
-| Argon2id KDF | ~2s | Intentionally expensive |
-| Kyber Encapsulate | ~0.5ms | Fast KEM |
-| Kyber Decapsulate | ~0.7ms | Slightly slower |
-| AES-256-GCM Encrypt | <0.1ms | Hardware-accelerated |
-| AES-256-GCM Decrypt | <0.1ms | Hardware-accelerated |
-| HMAC-SHA256 | <0.1ms | Fast hash |
+The main password-entry view supports:
 
-### Scalability
+- password items
+- "Cyphered Note" items
+- card items
 
-| Vault Size | Entries | Add Time | View Time |
-|------------|---------|----------|-----------|
-| Small | 1-10 | <100ms | <100ms |
-| Medium | 11-100 | <200ms | <200ms |
-| Large | 101-1000 | <500ms | <500ms |
-| Very Large | 1001+ | ~1s+ | ~1s+ |
+### 7.3 Settings structure
 
----
+`ui/settings_screen.go` currently exposes four sections:
 
-## Testing Guidelines
+- **Security**
+  - change master password
+  - monitored app kill list
+- **Vaults**
+  - status labels and placeholder maintenance/backup actions
+- **Visuals**
+  - theme/image palette/icon customization
+- **About**
+  - static product information and placeholder docs/update actions
 
-### Unit Testing
+## 8. Password intelligence subsystem
 
-```go
-// Test KDF determinism
-func TestKDFDeterminism(t *testing.T) {
-    params := crypto.DefaultKDFParams()
-    key1, ver1, _ := crypto.DeriveKeys("password", params)
-    key2, ver2, _ := crypto.DeriveKeys("password", params)
-    assert.Equal(t, key1, key2)
-}
+The `strength/` package powers both:
 
-// Test vault round-trip
-func TestVaultRoundTrip(t *testing.T) {
-    plaintext := []byte("test data")
-    // ... encrypt and decrypt ...
-    assert.Equal(t, plaintext, decrypted)
-}
+- inline strength feedback on password entry
+- the dedicated password checker screen
 
-// Test HMAC integrity
-func TestVaultTampering(t *testing.T) {
-    // ... tamper with vault ...
-    _, err := crypto.DecryptVault(vault, encKey, verKey)
-    assert.Error(t, err)
-}
-```
+The analyzer combines:
 
-### Integration Testing
+- repeated-character checks
+- keyboard-pattern checks
+- leet-speak detection
+- date detection
+- common words and names
+- missing character classes
+- similarity to already stored vault passwords
+- entropy and crack-time estimation
 
-```bash
-# Verify no plaintext
-strings vaults/test.pqdb | grep -i "password"
+There is also an easter-egg mode triggered by passwords containing `neal.fun`.
 
-# Test wrong password
-./passquantum  # Enter wrong password
+## 9. Theme and palette subsystem
 
-# Test tampering
-xxd vaults/test.pqdb  # Modify bytes
-./passquantum  # Should detect tampering
-```
+The UI uses a custom neon palette and animated particle background from `ui/ui_theme.go`.
 
-### Performance Profiling
+Visual customization currently includes:
 
-```bash
-# CPU profiling
-go test -cpuprofile=cpu.prof -bench=. ./core/crypto
-go tool pprof cpu.prof
+- image-driven palette extraction using `palette/extractor.go`
+- manual color personalization dialogs
+- app icon replacement stored in preferences
 
-# Memory profiling
-go test -memprofile=mem.prof -bench=. ./core/crypto
-go tool pprof mem.prof
-```
+## 10. Build architecture
 
----
+### 10.1 Plain Go build
 
-## Extension Points
+`go build .\ui` compiles the Fyne app without embedding the PyInstaller face bundle.
 
-### Adding New Cryptographic Algorithm
+### 10.2 Linux bundle-aware build
 
-```go
-// 1. Create core/crypto/new_algo.go
-func EncryptNewAlgo(plaintext string, key []byte) ([]byte, error) {
-    // Implementation
-}
+`build.sh linux`:
 
-// 2. Update UI to use new algorithm
-```
+1. builds the Python bundle with PyInstaller when possible
+2. builds Go with `-tags with_face_bundle`
+3. otherwise falls back to copying Python sources and `models/`
 
-### Adding New Storage Backend
+### 10.3 Windows self-contained build
 
-```go
-// 1. Create core/storage/cloud.go
-func WriteVaultToCloud(vault *crypto.VaultFile, cloudPath string) error {
-    // Cloud upload implementation
-}
+`Build-FaceBundle.ps1`:
 
-// 2. Update UI to offer cloud sync
-```
+1. creates `.venv-faceguard`
+2. produces `ui\face_guard_bundle.exe`
+3. generates `ui\rsrc.syso` from `ui\app.manifest`
+4. sets `CGO_ENABLED=1`
+5. prefers MSYS2 MinGW-w64 GCC
+6. builds `build\windows\PassQuantum.exe`
+7. removes the temporary `rsrc.syso`
 
-### Adding New UI Screen
+### 10.4 Embedded bundle extraction
 
-```go
-// 1. Create ui/new_screen.go
-func ShowNewScreen(w fyne.Window, fyneApp fyne.App, appState *AppState) {
-    // New screen implementation
-}
+When built with `with_face_bundle`:
 
-// 2. Add navigation from existing screens
-```
+- the Python bundle is embedded with `//go:embed`
+- extracted into `%TEMP%/passquantum-face-guard`
+- exposed through environment variables to the Go launcher
 
----
+## 11. Generated and third-party areas
 
-**PassQuantum Architecture** - Secure by design, modular by nature. 🔐
+These paths are present in the folder but are not primary product source:
+
+- `.venv-faceguard/` - build-time Python environment
+- `build/` - local build outputs
+- `fyne-cross/` - cross-packaging outputs
+- `vendor/` - vendored Go dependencies
+
+They still matter operationally because the current repository includes packaged artifacts and build outputs alongside the source.
+
+## 12. Current implementation caveats
+
+The docs should reflect these realities:
+
+- The app is gated by a global app-security profile first, not by opening a vault directly from the login screen.
+- Vault settings for compaction/export/import/backup/restore are mostly placeholder dialogs right now.
+- The About page still contains static version/support copy from the UI layer.
+- The Windows self-contained build path depends on the PowerShell script, `rsrc`, and MSYS2 GCC.

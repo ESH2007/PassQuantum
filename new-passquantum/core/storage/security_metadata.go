@@ -47,46 +47,23 @@ func SaveAppSecurityProfile(path string, profile *crypto.AppSecurityProfile) err
 	return nil
 }
 
-// ReencryptVaultFile decrypts a vault with the current password and returns its re-encrypted bytes.
-func ReencryptVaultFile(vaultPath string, currentPassword string, newPassword string) ([]byte, crypto.KDFParams, error) {
-	vaultData, err := os.ReadFile(vaultPath)
+// ReencryptVaultFile decrypts a vault with currentPassword and returns the
+// bytes of the same vault re-encrypted with newPassword using the PQ format.
+// The caller is responsible for atomically replacing the vault file.
+func ReencryptVaultFile(vaultPath string, currentPassword string, newPassword string) ([]byte, error) {
+	entries, err := ReadVault(vaultPath, currentPassword)
 	if err != nil {
-		return nil, crypto.KDFParams{}, fmt.Errorf("failed to read vault file: %w", err)
-	}
-
-	vault, err := crypto.VaultFileDeserialize(vaultData)
-	if err != nil {
-		return nil, crypto.KDFParams{}, fmt.Errorf("failed to deserialize vault: %w", err)
-	}
-
-	currentEncryptionKey, currentVerificationKey, err := crypto.DeriveKeys(currentPassword, vault.KDFParams)
-	if err != nil {
-		return nil, crypto.KDFParams{}, fmt.Errorf("failed to derive current vault keys: %w", err)
-	}
-
-	entries, err := ReadVault(vaultPath, currentEncryptionKey, currentVerificationKey)
-	if err != nil {
-		return nil, crypto.KDFParams{}, fmt.Errorf("failed to decrypt vault with current password: %w", err)
-	}
-
-	newParams := crypto.DefaultKDFParams()
-	newParams.Salt, err = crypto.GenerateSalt()
-	if err != nil {
-		return nil, crypto.KDFParams{}, fmt.Errorf("failed to generate new vault salt: %w", err)
-	}
-
-	newEncryptionKey, newVerificationKey, err := crypto.DeriveKeys(newPassword, newParams)
-	if err != nil {
-		return nil, crypto.KDFParams{}, fmt.Errorf("failed to derive new vault keys: %w", err)
+		return nil, fmt.Errorf("failed to decrypt vault with current password: %w", err)
 	}
 
 	plaintext := serializeEntries(entries)
-	reencryptedVault, err := crypto.EncryptVault(plaintext, newEncryptionKey, newVerificationKey, newParams)
+
+	newData, err := crypto.PQVaultEncrypt(plaintext, newPassword)
 	if err != nil {
-		return nil, crypto.KDFParams{}, fmt.Errorf("failed to re-encrypt vault: %w", err)
+		return nil, fmt.Errorf("failed to re-encrypt vault: %w", err)
 	}
 
-	return reencryptedVault.Serialize(), newParams, nil
+	return newData, nil
 }
 
 func resolveSecurityMetadataPath(path string) string {

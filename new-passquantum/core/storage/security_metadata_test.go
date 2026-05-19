@@ -46,18 +46,6 @@ func TestSaveAndLoadAppSecurityProfile(t *testing.T) {
 func TestReencryptVaultFile(t *testing.T) {
 	vaultPath := filepath.Join(t.TempDir(), "vault.pqdb")
 
-	originalParams := crypto.DefaultKDFParams()
-	var err error
-	originalParams.Salt, err = crypto.GenerateSalt()
-	if err != nil {
-		t.Fatalf("GenerateSalt() error = %v", err)
-	}
-
-	originalEncryptionKey, originalVerificationKey, err := crypto.DeriveKeys("old-password", originalParams)
-	if err != nil {
-		t.Fatalf("DeriveKeys() original error = %v", err)
-	}
-
 	entry := model.NewVaultEntry()
 	entry.Service = "GitHub"
 	entry.Username = "alice@example.com"
@@ -65,11 +53,11 @@ func TestReencryptVaultFile(t *testing.T) {
 	entry.Nonce = []byte{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
 	entry.Ciphertext = []byte{9, 8, 7, 6, 5}
 
-	if err := WriteVault([]*model.VaultEntry{entry}, vaultPath, originalEncryptionKey, originalVerificationKey, originalParams); err != nil {
+	if err := WriteVault([]*model.VaultEntry{entry}, vaultPath, "old-password"); err != nil {
 		t.Fatalf("WriteVault() error = %v", err)
 	}
 
-	rotatedData, rotatedParams, err := ReencryptVaultFile(vaultPath, "old-password", "new-password")
+	rotatedData, err := ReencryptVaultFile(vaultPath, "old-password", "new-password")
 	if err != nil {
 		t.Fatalf("ReencryptVaultFile() error = %v", err)
 	}
@@ -78,18 +66,13 @@ func TestReencryptVaultFile(t *testing.T) {
 		t.Fatalf("WriteFile() rotated vault error = %v", err)
 	}
 
-	if _, err := ReadVault(vaultPath, originalEncryptionKey, originalVerificationKey); err == nil {
+	if _, err := ReadVault(vaultPath, "old-password"); err == nil {
 		t.Fatal("ReadVault() with original password succeeded after rotation, want failure")
 	}
 
-	rotatedEncryptionKey, rotatedVerificationKey, err := crypto.DeriveKeys("new-password", rotatedParams)
+	entries, err := ReadVault(vaultPath, "new-password")
 	if err != nil {
-		t.Fatalf("DeriveKeys() rotated error = %v", err)
-	}
-
-	entries, err := ReadVault(vaultPath, rotatedEncryptionKey, rotatedVerificationKey)
-	if err != nil {
-		t.Fatalf("ReadVault() with rotated password error = %v", err)
+		t.Fatalf("ReadVault() with new password error = %v", err)
 	}
 
 	if len(entries) != 1 {

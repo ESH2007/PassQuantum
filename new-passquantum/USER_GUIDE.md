@@ -1,173 +1,291 @@
-# PassQuantum GUI - User Guide
+# PassQuantum User Guide
 
-## Getting Started
+This guide is the practical companion to `USER_EXPERIENCE.md`. It focuses on how to install, run, and use the app in its current state.
 
-### First Run
-When you launch PassQuantum for the first time:
-1. The application checks for existing Kyber768 keypair files
-2. If none exist, a new keypair is automatically generated and saved
-3. Your **public key** is saved to `public.key`
-4. Your **private key** is saved to `private.key` (keep this safe!)
+## 1. Before you start
 
-### Main Window
+PassQuantum is a local desktop application. Your important runtime data is stored next to the app in files such as:
 
-The PassQuantum window displays:
-- **Application Title**: "PassQuantum - Post-Quantum Safe Password Manager"
-- **Password Input**: A masked text field to enter new passwords
-- **Buttons**:
-  - **Add Password**: Encrypts and saves the password
-  - **View Passwords**: Displays all saved passwords
-  - **Exit**: Closes the application
+- `public.key`
+- `private.key`
+- `app-security.pqmeta`
+- `vaults/*.pqdb`
+- `face_data.npy`
 
-## Usage
+If you lose the private key, the app-security profile, or the vault files together, recovery becomes difficult or impossible.
 
-### Adding a Password
+## 2. Running the app
 
-1. Type a password in the "Enter a new password" field
-2. Click "Add Password"
-3. The application will:
-   - Encrypt the password using Kyber768 + AES-256-GCM
-   - Save it to `passwords.txt`
-   - Display a success message
-   - Clear the input field
-4. Your password is now stored securely
+### Option A: simple developer build
 
-### Viewing Passwords
+From `new-passquantum/`:
 
-1. Click "View Passwords"
-2. A new window opens showing all your saved passwords
-3. Each password is decrypted using your private key
-4. Passwords are displayed in a numbered list
-5. Close the window to return to the main screen
-
-### Exiting
-
-- Click "Exit" to close the application
-- Your keypair and passwords remain saved on disk
-
-## Storage Details
-
-### Files Created
-
-After first run, PassQuantum creates these files in the current directory:
-
-| File | Purpose | Security |
-|------|---------|----------|
-| `public.key` | Public key for encryption | Can be shared |
-| `private.key` | Private key for decryption | **KEEP SECRET!** |
-| `passwords.txt` | Encrypted password database | Useless without private key |
-
-### Backup Recommendations
-
-1. **Backup `public.key` and `private.key` together**
-   - These files are required to recover all passwords
-   - Store in a secure location (USB drive, encrypted cloud storage)
-
-2. **Do NOT backup only `passwords.txt`**
-   - Without the private key, the file cannot be decrypted
-
-3. **Protect `private.key` carefully**
-   - Anyone with this file can decrypt all your vault items
-   - Consider encrypting your home directory
-
-## Error Messages
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| "password cannot be empty" | You clicked Add with blank field | Type a password first |
-| "encapsulation failed" | Crypto error (rare) | Restart the app |
-| "encryption failed" | AES error (rare) | Restart the app |
-| "failed to save vault item" | Disk write error | Check disk space & permissions |
-| "failed to read vault" | File corrupted or permission denied | Check vault file access |
-| "No vault items stored yet" | Vault is empty | Add a vault item first |
-
-## Security Considerations
-
-### Strengths
-- ✅ Post-quantum cryptography (Kyber768)
-- ✅ AES-256 symmetric encryption
-- ✅ Secure random nonce generation
-- ✅ No hardcoded keys
-
-### Current Limitations
-- ⚠️ No master password protection
-- ⚠️ Private key stored unencrypted on disk
-- ⚠️ Decrypted passwords visible in memory
-- ⚠️ No authentication/authorization
-
-### Recommendations
-1. Use encrypted filesystem
-2. Restrict file permissions: `chmod 600 private.key`
-3. Don't share `private.key` with untrusted parties
-4. Keep backups in secure locations
-5. Consider adding a master password in future versions
-
-## Technical Details
-
-### Encryption Algorithm
-- **Key Encapsulation**: Kyber768 (post-quantum safe)
-  - Generates random shared secret
-  - Client has no control over randomness (deterministic security)
-  
-- **Symmetric Encryption**: AES-256-GCM
-  - 256-bit key derived from Kyber's shared secret
-  - Random 96-bit nonce per password
-  - Authenticated encryption (prevents tampering)
-
-### Why Kyber768?
-- Resistant to future quantum computers
-- NIST-standardized (2022)
-- Efficient key sizes and computation
-- Proven to be secure even against quantum attacks
-
-### File Format
-Each line in `passwords.txt` contains one encrypted password:
-```
-[base64(kyber_ciphertext), base64(nonce), base64(aes_ciphertext)], \n
+```powershell
+go build -o build\PassQuantum.exe .\ui
+.\build\PassQuantum.exe
 ```
 
-The base64 encoding allows storage of binary data in text files.
+This is the easiest local build for development.
 
-## Troubleshooting
+### Option B: self-contained Windows build
 
-### Application won't start
-- Check that Fyne dependencies are installed
-- Ensure you have X11 or Wayland display server
-- Try: `./passquantum-app -help`
+For a Windows binary that embeds the Python face-guard bundle:
 
-### Forgot to save files before moving directory
-- Keypair files (`*.key`) and `passwords.txt` are tied to the working directory
-- Copy all files together when moving
+```powershell
+.\Build-FaceBundle.ps1
+.\build\windows\PassQuantum.exe
+```
 
-### Lost private key
-- ❌ Unfortunately, encrypted passwords cannot be recovered
-- This is a security feature (no backdoor)
-- Always maintain backups of `private.key`
+Notes:
 
-### Corrupted `passwords.txt`
-- The application skips malformed entries
-- Try removing `passwords.txt` and recreating it
-- Or edit the file to fix the problematic line
+- The script builds `ui\face_guard_bundle.exe` first.
+- It then embeds that bundle into `PassQuantum.exe`.
+- It prefers MSYS2 MinGW-w64 GCC from `C:\msys64\mingw64\bin\gcc.exe`.
 
-## Advanced Usage
+### Option C: Linux helper script
 
-### Running Multiple Instances
-- Each instance uses the same keypair files
-- Changes from one instance won't be visible to another until restart
-- Recommended: Only run one instance at a time
-
-### Command-Line Building (Development)
 ```bash
-cd new-passquantum
-go mod tidy
-go build -o passquantum-app ./ui
-./passquantum-app
+./build-native.sh
+./build/linux/PassQuantum
 ```
 
-### Modifying Source Code
-The modular architecture makes it easy to:
-- Change encryption algorithm (modify `core/crypto/`)
-- Change storage format (modify `core/storage/`)
-- Add new UI features (modify `ui/main.go`)
+## 3. First launch
 
-See `ARCHITECTURE.md` for detailed package documentation.
+On first launch:
+
+1. the app generates `public.key` and `private.key` if they do not already exist
+2. you create a **global** master password
+3. the app creates a default vault if none exists
+4. if the face guard is available, the app may ask you to complete facial registration
+
+Important: the master password protects the whole app session first. Vaults are then opened using keys derived from that unlocked password.
+
+## 4. Unlocking the app
+
+On later launches:
+
+1. enter the global master password
+2. the app verifies it against `app-security.pqmeta`
+3. face monitoring starts in the background if the face guard is active
+4. the vault-selection screen opens
+
+If you enter the wrong password, the app stays locked.
+
+## 5. Creating and opening vaults
+
+### Create a vault
+
+1. Open the `Vaults` view
+2. Click `+ CREATE VAULT`
+3. Enter a vault name
+4. Confirm creation
+
+The app uses the already unlocked global master password automatically.
+
+### Open a vault
+
+1. In the `Vaults` view, find the vault card
+2. Click `OPEN`
+3. The main sidebar shell opens with that vault active
+
+## 6. Adding items
+
+Open the `Passwords` view and choose the item type:
+
+- `Password`
+- `Cyphered Note`
+- `Card`
+
+### Save a password
+
+Fill in:
+
+- service name
+- username or email
+- password
+
+Then click `SAVE ITEM`.
+
+### Save a note
+
+Fill in:
+
+- note title
+- note content
+
+Then click `SAVE ITEM`.
+
+### Save a card
+
+Fill in:
+
+- card type
+- nickname
+- holder
+- number
+- expiry
+- CVV
+
+Then click `SAVE ITEM`.
+
+## 7. Viewing, editing, and deleting items
+
+Click `VIEW ALL ITEMS` from the Passwords screen.
+
+Available actions:
+
+- **passwords**: show, copy, edit, delete
+- **notes**: view, copy, delete
+- **cards**: show, copy, delete
+
+Deleting an item is permanent.
+
+## 8. Using the password generator
+
+Open the `Generate` view.
+
+You can choose:
+
+- password length
+- uppercase letters
+- lowercase letters
+- numbers
+- special characters
+- whether to exclude ambiguous characters
+
+Then:
+
+- click `GENERATE`
+- optionally `COPY`
+- or `SAVE TO VAULT`
+
+## 9. Using the password checker
+
+Open the `Check Password` view.
+
+Type any password to see:
+
+- score
+- strength label
+- crack-time estimate
+- detected weaknesses
+
+The checker also compares against passwords already stored in your current vault.
+
+## 10. Changing the master password
+
+1. Go to `Settings`
+2. Open `Security`
+3. Click `CHANGE MASTER PASSWORD`
+4. Enter:
+   - current password
+   - new password
+   - confirmation
+
+On success the app:
+
+- updates `app-security.pqmeta`
+- re-encrypts every vault with keys derived from the new password
+
+## 11. Face-guard usage
+
+If the face guard is available, PassQuantum uses a Python subprocess to monitor the webcam.
+
+### Training
+
+During registration:
+
+- stay in front of the camera
+- let the app collect samples
+- blink when prompted by the liveness logic
+
+### Monitoring
+
+After unlock:
+
+- the app starts monitoring automatically
+- if your recognized face disappears for 5 seconds, the app locks
+
+If you configured monitored apps in `Settings -> Security`, those apps will be force-closed at that moment.
+
+## 12. Settings you can rely on today
+
+### Fully or mostly implemented
+
+- change master password
+- monitored-app selection
+- manual color personalization
+- image-driven palette extraction
+- app icon replacement
+- palette reset
+
+### Present but mostly placeholder
+
+- compact vault
+- export/import
+- backup now
+- restore
+- docs button
+- updates button
+
+Treat the second group as UI placeholders, not full backup features.
+
+## 13. Backup guidance
+
+Back up these together:
+
+- `public.key`
+- `private.key`
+- `app-security.pqmeta`
+- `vaults/`
+- `face_data.npy` if you want to preserve face training
+
+If you move the app to another machine or folder, keep those files together.
+
+## 14. Common problems
+
+### The app keeps asking me to create a master password
+
+Possible causes:
+
+- `app-security.pqmeta` is missing
+- `private.key` changed and no longer matches the stored profile
+
+### A vault will not open
+
+Possible causes:
+
+- wrong global master password before unlock
+- corrupted vault file
+- mismatched migrated files
+
+### Windows self-contained build fails
+
+Use:
+
+```powershell
+.\Build-FaceBundle.ps1
+```
+
+And make sure:
+
+- Python is installed
+- MSYS2 MinGW-w64 GCC is available at `C:\msys64\mingw64\bin\gcc.exe`
+- the script can build `ui\face_guard_bundle.exe`
+
+### The face guard does not start
+
+Possible causes:
+
+- missing Python dependencies for source-based runs
+- missing embedded bundle for bundle-based runs
+- webcam access failure
+- missing `models\face_landmarker.task`
+
+## 15. Safe usage recommendations
+
+- Choose a strong global master password
+- Back up keys and vaults before changing systems
+- Use full-disk encryption on the host machine
+- Only add apps to the monitored kill list if you are comfortable losing unsaved work
+- Remember that the app is local-first and does not provide cloud sync or remote recovery

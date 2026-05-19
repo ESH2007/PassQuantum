@@ -249,7 +249,7 @@ func storedVaultPasswords(appState *AppState) []string {
 	appState.mu.Lock()
 	defer appState.mu.Unlock()
 
-	entries, err := ReadVault(GetVaultPath(appState.currentVault), appState.encryptionKey, appState.verificationKey)
+	entries, err := ReadVault(GetVaultPath(appState.currentVault), appState.masterPassword)
 	if err != nil {
 		return nil
 	}
