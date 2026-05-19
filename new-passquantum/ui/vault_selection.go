@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"image/color"
 	"os"
-	"path/filepath"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -39,7 +38,7 @@ func ShowVaultSelection(w fyne.Window, fyneApp fyne.App, appState *AppState) {
 
 func createVaultCard(w fyne.Window, fyneApp fyne.App, appState *AppState, vaultName string) fyne.CanvasObject {
 	nameLabel := CreateLabel(vaultName, 13, ColorAccentCyn, true)
-	vaultPath := filepath.Join("vaults", vaultName+".pqdb")
+	vaultPath := GetVaultPath(vaultName)
 	infoLabel := CreateLabel("Location: "+vaultPath, 10, ColorTextSec, false)
 
 	openBtn := CreateNeonButton("OPEN", func() {
@@ -117,7 +116,7 @@ func showDeleteVaultDialog(w fyne.Window, fyneApp fyne.App, appState *AppState, 
 		fmt.Sprintf("Are you sure you want to delete '%s'? This cannot be undone.", vaultName),
 		func(confirmed bool) {
 			if confirmed {
-				vaultPath := filepath.Join("vaults", vaultName+".pqdb")
+				vaultPath := GetVaultPath(vaultName)
 				err := os.Remove(vaultPath)
 				if err != nil {
 					ShowAppError(fmt.Errorf("failed to delete vault: %w", err), w)

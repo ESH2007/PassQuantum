@@ -2,9 +2,9 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/cloudflare/circl/kem/kyber/kyber768"
 
@@ -13,40 +13,67 @@ import (
 	"passquantum/core/crypto"
 	"passquantum/core/model"
 	"passquantum/core/storage"
+	securestorage "passquantum/internal/storage"
 )
 
 // VaultHelper functions for managing multiple vaults
 
 // GetVaultPath returns the file path for a vault with the given name
 func GetVaultPath(vaultName string) string {
-	vaultsDir := "vaults"
-	// Create vaults directory if it doesn't exist
-	os.MkdirAll(vaultsDir, 0755)
-	return filepath.Join(vaultsDir, vaultName+".pqdb")
+	vaultName = strings.TrimSpace(vaultName)
+	preferredPath, preferredErr := securestorage.ResolveVaultPath(vaultName + ".enc")
+	if preferredErr != nil {
+		return vaultName + ".enc"
+	}
+
+	legacyPath, legacyErr := securestorage.ResolveVaultPath(vaultName + ".pqdb")
+	if legacyErr != nil {
+		return preferredPath
+	}
+
+	if _, err := os.Stat(preferredPath); err == nil {
+		return preferredPath
+	}
+
+	if _, err := os.Stat(legacyPath); err == nil {
+		return legacyPath
+	}
+
+	return preferredPath
 }
 
 // ListVaults returns a list of all available vault names
 func ListVaults() []string {
-	vaultsDir := "vaults"
 	var vaults []string
+	seen := map[string]struct{}{}
 
-	// Create directory if it doesn't exist
-	if _, err := os.Stat(vaultsDir); os.IsNotExist(err) {
-		os.MkdirAll(vaultsDir, 0755)
+	vaultsDir, err := securestorage.GetVaultDir()
+	if err != nil {
 		return vaults
 	}
 
-	files, err := ioutil.ReadDir(vaultsDir)
+	files, err := os.ReadDir(vaultsDir)
 	if err != nil {
 		return vaults
 	}
 
 	for _, file := range files {
-		if !file.IsDir() && filepath.Ext(file.Name()) == ".pqdb" {
-			// Remove .pqdb extension to get vault name
-			vaultName := file.Name()[:len(file.Name())-5]
-			vaults = append(vaults, vaultName)
+		if file.IsDir() {
+			continue
 		}
+
+		ext := filepath.Ext(file.Name())
+		if ext != ".enc" && ext != ".pqdb" {
+			continue
+		}
+
+		vaultName := strings.TrimSuffix(file.Name(), ext)
+		if _, exists := seen[vaultName]; exists {
+			continue
+		}
+
+		seen[vaultName] = struct{}{}
+		vaults = append(vaults, vaultName)
 	}
 
 	return vaults

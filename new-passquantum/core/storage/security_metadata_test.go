@@ -1,12 +1,12 @@
 package storage
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
 	"passquantum/core/crypto"
 	"passquantum/core/model"
+	securestorage "passquantum/internal/storage"
 )
 
 func TestSaveAndLoadAppSecurityProfile(t *testing.T) {
@@ -44,7 +44,8 @@ func TestSaveAndLoadAppSecurityProfile(t *testing.T) {
 }
 
 func TestReencryptVaultFile(t *testing.T) {
-	vaultPath := filepath.Join(t.TempDir(), "vault.pqdb")
+	tempDir := t.TempDir()
+	vaultPath := filepath.Join(tempDir, filepath.Base(tempDir)+"-vault.pqdb")
 
 	entry := model.NewVaultEntry()
 	entry.Service = "GitHub"
@@ -62,7 +63,7 @@ func TestReencryptVaultFile(t *testing.T) {
 		t.Fatalf("ReencryptVaultFile() error = %v", err)
 	}
 
-	if err := os.WriteFile(vaultPath, rotatedData, 0600); err != nil {
+	if err := securestorage.WriteVaultFile(vaultPath, rotatedData); err != nil {
 		t.Fatalf("WriteFile() rotated vault error = %v", err)
 	}
 

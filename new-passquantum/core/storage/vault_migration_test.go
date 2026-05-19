@@ -1,15 +1,16 @@
 package storage
 
 import (
-	"os"
 	"path/filepath"
 	"testing"
 
 	"passquantum/core/model"
+	securestorage "passquantum/internal/storage"
 )
 
 func TestWriteReadVaultTypedFormatRoundTrip(t *testing.T) {
-	vaultPath := filepath.Join(t.TempDir(), "typed-roundtrip.pqdb")
+	tempDir := t.TempDir()
+	vaultPath := filepath.Join(tempDir, filepath.Base(tempDir)+"-typed-roundtrip.pqdb")
 	password := "typed-pass"
 
 	passwordEntry := model.NewVaultEntry()
@@ -64,8 +65,9 @@ func TestWriteReadVaultTypedFormatRoundTrip(t *testing.T) {
 // TestReadVaultLegacyFormatReturnsError verifies that files without the PQVT magic
 // header are rejected with an error requiring re-encryption.
 func TestReadVaultLegacyFormatReturnsError(t *testing.T) {
-	vaultPath := filepath.Join(t.TempDir(), "legacy-format.pqdb")
-	if err := os.WriteFile(vaultPath, []byte("OLDFORMAT_NOT_PQVT"), 0600); err != nil {
+	tempDir := t.TempDir()
+	vaultPath := filepath.Join(tempDir, filepath.Base(tempDir)+"-legacy-format.pqdb")
+	if err := securestorage.WriteVaultFile(vaultPath, []byte("OLDFORMAT_NOT_PQVT")); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 

@@ -12,6 +12,7 @@ import (
 	"github.com/cloudflare/circl/kem/kyber/kyber768"
 
 	"passquantum/core/crypto"
+	securestorage "passquantum/internal/storage"
 )
 
 const (
@@ -40,6 +41,12 @@ type AppState struct {
 func main() {
 	normalizeLocaleForFyne()
 	_ = os.Setenv("OPENCV_LOG_LEVEL", "ERROR")
+
+	if _, err := securestorage.GetVaultDir(); err != nil {
+		log.Printf("WARNING: failed to initialize secure vault directory: %v", err)
+	} else if err := securestorage.ValidateVaultPermissions(); err != nil {
+		log.Printf("WARNING: failed to validate vault permissions: %v", err)
+	}
 
 	myApp := app.NewWithID("com.passquantum.app")
 	setApplicationIcon(myApp)

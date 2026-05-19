@@ -6,6 +6,7 @@ import (
 
 	"passquantum/core/crypto"
 	"passquantum/core/model"
+	securestorage "passquantum/internal/storage"
 )
 
 const DefaultVaultFile = "vault.pqdb"
@@ -21,7 +22,7 @@ func WriteVault(entries []*model.VaultEntry, vaultPath string, password string) 
 		return fmt.Errorf("failed to encrypt vault: %w", err)
 	}
 
-	if err := os.WriteFile(vaultPath, vaultData, 0600); err != nil {
+	if err := securestorage.WriteVaultFile(vaultPath, vaultData); err != nil {
 		return fmt.Errorf("failed to write vault file: %w", err)
 	}
 
@@ -33,7 +34,7 @@ func WriteVault(entries []*model.VaultEntry, vaultPath string, password string) 
 //   - "PQVT" magic → PQ vault (Argon2id + Kyber-768 KEM + Dilithium3 signature)
 //   - legacy format → auto-migrated on first open (re-encrypted to PQ format in-place)
 func ReadVault(vaultPath string, password string) ([]*model.VaultEntry, error) {
-	vaultData, err := os.ReadFile(vaultPath)
+	vaultData, err := securestorage.ReadVaultFile(vaultPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return []*model.VaultEntry{}, nil
@@ -59,7 +60,7 @@ func ReadVault(vaultPath string, password string) ([]*model.VaultEntry, error) {
 		// Re-encrypt with the new PQ format and write back immediately.
 		newData, migrateErr := crypto.PQVaultEncrypt(plaintext, password)
 		if migrateErr == nil {
-			_ = os.WriteFile(vaultPath, newData, 0600) // best-effort; don't fail the read
+			_ = securestorage.WriteVaultFile(vaultPath, newData) // best-effort; don't fail the read
 		}
 	}
 
@@ -94,11 +95,25 @@ func decryptLegacyVault(data []byte, password string) ([]byte, error) {
 
 // VaultExists checks if the vault file exists.
 func VaultExists(vaultPath string) bool {
-	_, err := os.Stat(vaultPath)
+	resolvedPath, err := securestorage.ResolveVaultPath(vaultPath)
+	if err != nil {
+		return false
+	}
+
+	_, err = os.Stat(resolvedPath)
 	return err == nil
 }
 
 // DeleteVault removes the vault file (destructive — data loss!).
 func DeleteVault(vaultPath string) error {
-	return os.Remove(vaultPath)
+	resolvedPath, err := securestorage.ResolveVaultPath(vaultPath)
+	if err != nil {
+		return fmt.Errorf("failed to resolve vault path: %w", err)
+	}
+
+	if err := os.Remove(resolvedPath); err != nil {
+		return fmt.Errorf("failed to remove vault file %q: %w", resolvedPath, err)
+	}
+
+	return nil
 }
