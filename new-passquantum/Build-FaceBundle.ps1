@@ -283,11 +283,13 @@ if (-not (Test-Path $ManifestSrc)) {
     exit 1
 }
 
-Write-Step "go run -mod=vendor github.com/akavel/rsrc  →  ui\rsrc.syso"
-& go run -mod=vendor github.com/akavel/rsrc `
-    -64 `
-    -manifest $ManifestSrc `
-    -o        $ManifestSyso
+Write-Step "go install github.com/akavel/rsrc  →  ui\rsrc.syso"
+& go install github.com/akavel/rsrc@v0.10.2
+if ($LASTEXITCODE -ne 0) {
+    Write-Fail "Failed to install rsrc tool (exit $LASTEXITCODE)."
+    exit 1
+}
+& rsrc -64 -manifest $ManifestSrc -o $ManifestSyso
 if ($LASTEXITCODE -ne 0) {
     Write-Fail "rsrc failed (exit $LASTEXITCODE)."
     exit 1
