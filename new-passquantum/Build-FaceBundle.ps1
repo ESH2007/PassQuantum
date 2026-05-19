@@ -289,7 +289,7 @@ if ($LASTEXITCODE -ne 0) {
     Write-Fail "Failed to install rsrc tool (exit $LASTEXITCODE)."
     exit 1
 }
-& rsrc -64 -manifest $ManifestSrc -o $ManifestSyso
+& rsrc -arch amd64 -manifest $ManifestSrc -o $ManifestSyso
 if ($LASTEXITCODE -ne 0) {
     Write-Fail "rsrc failed (exit $LASTEXITCODE)."
     exit 1
@@ -326,13 +326,25 @@ New-Item -ItemType Directory -Force -Path $GoBuildDir | Out-Null
 
 $env:CGO_ENABLED = "1"
 
+# Prefer MSYS2 MinGW-w64 over TDM-GCC — TDM-GCC produces CGO binaries that
+# Windows rejects at load time ("not a valid application for this OS platform").
+$Msys2Gcc = "C:\msys64\mingw64\bin\gcc.exe"
+if (Test-Path $Msys2Gcc) {
+    $env:CC   = $Msys2Gcc
+    $env:PATH = "C:\msys64\mingw64\bin;$($env:PATH)"
+    Write-OK "Using MSYS2 MinGW-w64 GCC: $Msys2Gcc"
+} else {
+    Write-Step "MSYS2 not found at C:\msys64 — falling back to GCC in PATH."
+    Write-Step "If the build fails, install MSYS2 from https://www.msys2.org/ and run: pacman -S mingw-w64-x86_64-gcc"
+}
+
 Write-Step "go build -tags with_face_bundle -o $GoBuildOutput .\ui"
 & go build -tags with_face_bundle -o $GoBuildOutput .\ui
 if ($LASTEXITCODE -ne 0) {
     # Clean up the generated syso so a partial build doesn't linger
     if (Test-Path $ManifestSyso) { Remove-Item -Force $ManifestSyso }
     Write-Fail "Go build failed (exit $LASTEXITCODE)."
-    Write-Step "Make sure a C compiler (TDM-GCC / MinGW-w64) is installed and in PATH."
+    Write-Step "Make sure MSYS2 MinGW-w64 is installed (https://www.msys2.org/) and run: pacman -S mingw-w64-x86_64-gcc"
     exit 1
 }
 

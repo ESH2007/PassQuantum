@@ -1,0 +1,11 @@
+{
+  "format_version": 1,
+  "private_key_fingerprint": "YPOjwJj8nfQ9IGvX3VQlWntXoeCGMqUMzMjV1te/y2Y=",
+  "kdf_params": {
+    "Salt": "C+tlnvU0twlg50ym9eEfNg==",
+    "Memory": 65536,
+    "Iterations": 1,
+    "Parallelism": 4
+  },
+  "verifier": "BXbulfNN2WtZ+6oCl5J+T2M3tzKolbnXVb3eFyKJPc8="
+}

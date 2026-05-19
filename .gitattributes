@@ -2,3 +2,5 @@
 PassQuantum filter=lfs diff=lfs merge=lfs -text
 new-passquantum/build/linux/PassQuantum filter=lfs diff=lfs merge=lfs -text
 new-passquantum/fyne-cross/bin/windows-amd64/PassQuantum.exe filter=lfs diff=lfs merge=lfs -text
+new-passquantum/ui/face_guard_bundle.exe filter=lfs diff=lfs merge=lfs -text
+new-passquantum/build/windows/PassQuantum.exe filter=lfs diff=lfs merge=lfs -text

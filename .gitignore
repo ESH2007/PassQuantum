@@ -8,3 +8,4 @@ osxcross/
 new-passquantum/ui/zz_passquantum_icon_windows*.syso
 __pycache__/
 face_data.pkl
+.venv-faceguard/
