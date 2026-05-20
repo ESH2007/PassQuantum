@@ -146,7 +146,6 @@ Some settings actions are real today, and some are placeholders that only show i
 - The face guard is a separate Python process managed from Go over localhost TCP.
 - The monitored-app kill list is stored in Fyne preferences and uses process names.
 - Theme/image/icon personalization is implemented.
-- Backup/export/import/restore actions in the Vault settings screen are mostly UI placeholders right now.
 - The About screen still shows static version and support text from the UI layer.
 
 ## Main documentation
