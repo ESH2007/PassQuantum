@@ -26,7 +26,7 @@ import socket
 import sys
 import time
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import cv2
 import numpy as np

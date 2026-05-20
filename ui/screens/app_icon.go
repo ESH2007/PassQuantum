@@ -5,10 +5,15 @@ import (
 	"path/filepath"
 
 	"fyne.io/fyne/v2"
+
+	"passquantum/ui/assets"
 )
 
 // SetApplicationIcon sets the application icon, preferring a user-configured custom
-// icon path stored in preferences, then falling back to well-known file locations.
+// icon path stored in preferences, then falling back to the icon embedded at
+// compile time. The embedded fallback is always available regardless of the
+// working directory, so the icon is visible on first launch without any manual
+// configuration.
 func SetApplicationIcon(myApp fyne.App) {
 	if customPath := myApp.Preferences().StringWithFallback("custom_icon_path", ""); customPath != "" {
 		data, err := os.ReadFile(customPath)
@@ -20,18 +25,6 @@ func SetApplicationIcon(myApp fyne.App) {
 		myApp.Preferences().SetString("custom_icon_path", "")
 	}
 
-	iconCandidates := []string{
-		"Icon.png",
-		filepath.Join("..", "Icon.png"),
-		filepath.Join("build", "windows", "Icon.png"),
-	}
-
-	for _, iconPath := range iconCandidates {
-		data, err := os.ReadFile(iconPath)
-		if err != nil || len(data) == 0 {
-			continue
-		}
-		myApp.SetIcon(fyne.NewStaticResource("Icon.png", data))
-		return
-	}
+	// Always available: icon embedded into the binary at build time.
+	myApp.SetIcon(assets.DefaultIconResource())
 }
