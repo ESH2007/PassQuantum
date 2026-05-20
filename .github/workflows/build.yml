@@ -34,7 +34,7 @@ jobs:
         with:
           go-version: "1.22"
           cache: true
-          cache-dependency-path: new-passquantum/go.sum
+          cache-dependency-path: go.sum
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -54,12 +54,10 @@ jobs:
             libxxf86vm-dev
 
       - name: Install Python dependencies + PyInstaller
-        working-directory: new-passquantum
         run: |
-          pip install --quiet -r requirements.txt pyinstaller
+          pip install --quiet -r python/requirements.txt pyinstaller
 
       - name: Build Python bundle with PyInstaller
-        working-directory: new-passquantum
         run: |
           PROJECT_ROOT="$(pwd)"
           python -m PyInstaller \
@@ -68,16 +66,16 @@ jobs:
             --distpath ui \
             --workpath /tmp/passquantum_pyinstaller_work \
             --specpath /tmp/passquantum_pyinstaller_spec \
+            --paths "${PROJECT_ROOT}/python" \
             --add-data "${PROJECT_ROOT}/models:models" \
             --collect-all mediapipe \
             --hidden-import cv2 \
             --hidden-import numpy \
             --noconfirm \
             --clean \
-            "${PROJECT_ROOT}/face_guard.py"
+            "${PROJECT_ROOT}/python/face_guard.py"
 
       - name: Build Linux binary (with embedded Python bundle)
-        working-directory: new-passquantum
         run: |
           mkdir -p build/linux
           CGO_ENABLED=1 go build -tags with_face_bundle -v \
@@ -87,7 +85,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: PassQuantum-linux-amd64
-          path: new-passquantum/build/linux/PassQuantum
+          path: build/linux/PassQuantum
           if-no-files-found: error
 
   # ──────────────────────────────────────────────────────────────────────────
@@ -109,7 +107,7 @@ jobs:
         with:
           go-version: "1.22"
           cache: true
-          cache-dependency-path: new-passquantum/go.sum
+          cache-dependency-path: go.sum
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -120,7 +118,6 @@ jobs:
         run: choco install mingw --yes --no-progress
 
       - name: Build Windows binary (PowerShell — embedded Python bundle)
-        working-directory: new-passquantum
         shell: pwsh
         run: .\Build-FaceBundle.ps1
 
@@ -128,7 +125,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: PassQuantum-windows-amd64
-          path: new-passquantum/build/windows/PassQuantum.exe
+          path: build/windows/PassQuantum.exe
           if-no-files-found: error
 
   # ──────────────────────────────────────────────────────────────────────────
@@ -148,7 +145,7 @@ jobs:
         with:
           go-version: "1.22"
           cache: true
-          cache-dependency-path: new-passquantum/go.sum
+          cache-dependency-path: go.sum
 
       - name: Install fyne-cross
         run: go install github.com/fyne-io/fyne-cross@latest
@@ -162,7 +159,6 @@ jobs:
           tar -xf /tmp/MacOSX11.3.sdk.tar.xz -C /tmp/SDKs/
 
       - name: Build macOS binary (fyne-cross)
-        working-directory: new-passquantum
         run: |
           fyne-cross darwin \
             -arch=* \
@@ -172,13 +168,16 @@ jobs:
             --macosx-sdk-path=/tmp/SDKs/MacOSX11.3.sdk \
             ./ui
 
-      - name: Copy face_guard.py into macOS dist
-        working-directory: new-passquantum
-        run: cp face_guard.py fyne-cross/dist/darwin-amd64/
+      - name: Copy face_guard Python files into macOS dist
+        run: |
+          mkdir -p fyne-cross/dist/darwin-amd64/python
+          cp python/face_guard.py python/geometric_encoder.py \
+             python/liveness_detector.py python/face_authenticator.py \
+             fyne-cross/dist/darwin-amd64/python/
 
       - name: Upload macOS artifact
         uses: actions/upload-artifact@v4
         with:
           name: PassQuantum-macos-amd64
-          path: new-passquantum/fyne-cross/dist/darwin-amd64/
+          path: fyne-cross/dist/darwin-amd64/
           if-no-files-found: error

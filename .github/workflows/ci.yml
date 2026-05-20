@@ -1,0 +1,98 @@
+name: CI — Core Tests
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Two jobs:
+#   test-go     — go vet + go test -race on all non-UI packages
+#   lint-python — ruff lint on the face-guard Python sidecar
+#
+# The existing build.yml validates that the binary compiles.
+# This workflow validates that the core logic is correct.
+# ─────────────────────────────────────────────────────────────────────────────
+
+jobs:
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Go unit tests
+  #
+  # Covers:
+  #   core/crypto   — keypair generation, app-security profile create/verify
+  #   core/storage  — vault write/read round-trip, typed entries, re-encryption,
+  #                   legacy format rejection, security-metadata save/load
+  #   internal/storage — vault file I/O, OS permission hardening
+  #   strength      — analyzer, entropy, patterns, similarity
+  #
+  # CGO dependencies (libgl1-mesa-dev, xorg-dev) are required because go vet
+  # resolves the full module graph, which includes Fyne's CGO-dependent packages
+  # even when the packages under test do not import them directly.
+  # ──────────────────────────────────────────────────────────────────────────
+  test-go:
+    name: Go Tests (core + strength)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Install CGO dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libgl1-mesa-dev \
+            xorg-dev
+
+      - name: Vet
+        run: go vet ./core/... ./internal/... ./strength/...
+
+      - name: Test — crypto
+        run: go test -v -race ./core/crypto/...
+
+      - name: Test — storage
+        run: go test -v -race ./core/storage/... ./internal/storage/...
+
+      - name: Test — strength
+        run: go test -v -race ./strength/...
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # Python lint
+  #
+  # Lints all active Python files in the face-guard sidecar (python/).
+  # Uses ruff for fast, zero-config linting.
+  # ──────────────────────────────────────────────────────────────────────────
+  lint-python:
+    name: Python Lint (ruff)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: pip install --quiet ruff
+
+      - name: Lint face-guard sidecar
+        working-directory: python
+        run: |
+          ruff check \
+            face_guard.py \
+            geometric_encoder.py \
+            liveness_detector.py \
+            face_authenticator.py

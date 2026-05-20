@@ -3,9 +3,21 @@ passwords.txt
 .venv/
 *.dmg
 SDKs/
-vendor/
 osxcross/
 new-passquantum/ui/zz_passquantum_icon_windows*.syso
 __pycache__/
 face_data.pkl
 .venv-faceguard/
+# Sensitive runtime files
+private.key
+public.key
+vaults/
+*.pqdb
+
+# Build artifacts
+build/
+fyne-cross/
+*.exe
+PassQuantum
+app-security.pqmeta
+face_data.npy
