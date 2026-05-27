@@ -3,7 +3,9 @@ package main
 import (
 	"log"
 	"os"
+	"os/exec"
 	"strings"
+	"time"
 
 	"fyne.io/fyne/v2"
 	fyneapp "fyne.io/fyne/v2/app"
@@ -12,6 +14,7 @@ import (
 	"passquantum/bridge"
 	"passquantum/core/crypto"
 	securestorage "passquantum/internal/storage"
+	"passquantum/theme"
 	"passquantum/ui/screens"
 )
 
@@ -32,9 +35,12 @@ func main() {
 	}
 
 	myApp := fyneapp.NewWithID("com.passquantum.app")
+	myApp.Settings().SetTheme(&theme.QuantumTheme{})
 	screens.SetApplicationIcon(myApp)
+	myApp.Lifecycle().SetOnStarted(func() {
+		go maximizeWindow()
+	})
 	w := myApp.NewWindow("PassQuantum - Post-Quantum Safe Password Manager")
-	w.SetTitle("PassQuantum - Post-Quantum Safe Password Manager")
 	screens.RestoreThemeOnLaunch(myApp, w)
 
 	// Initialize crypto keypair
@@ -87,6 +93,12 @@ func main() {
 
 	screens.PromptMasterPassword(w, myApp, appState)
 
+	w.SetOnClosed(func() {
+		if appState.FaceGuard != nil {
+			appState.FaceGuard.Shutdown()
+		}
+	})
+
 	w.ShowAndRun()
 }
 
@@ -133,4 +145,26 @@ func initializeApp() *pqapp.AppState {
 	appState.PrivateKey = privKey
 
 	return appState
+}
+
+// maximizeWindow asks the window manager to maximize the PassQuantum window.
+// Fyne v2 has no native maximize API, so we use wmctrl (X11/XWayland) with
+// xdotool as a fallback.  A short sleep lets the window become visible first.
+func maximizeWindow() {
+	time.Sleep(300 * time.Millisecond)
+
+	// wmctrl: available on most Linux desktops, works on X11 and XWayland
+	if err := exec.Command("wmctrl", "-r", "PassQuantum", "-b", "add,maximized_vert,maximized_horz").Run(); err == nil {
+		return
+	}
+
+	// xdotool fallback
+	out, err := exec.Command("xdotool", "search", "--name", "PassQuantum").Output()
+	if err != nil {
+		log.Printf("[maximize] no wmctrl or xdotool found; install one to auto-maximize: %v", err)
+		return
+	}
+	for _, wid := range strings.Fields(string(out)) {
+		exec.Command("xdotool", "windowmaximize", wid).Run()
+	}
 }

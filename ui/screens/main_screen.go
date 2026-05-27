@@ -1,29 +1,38 @@
 package screens
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"image"
 	"image/color"
+	_ "image/png"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 
 	"passquantum/app"
 	"passquantum/core/model"
 	"passquantum/strength"
 	"passquantum/theme"
+	"passquantum/ui/assets"
 	"passquantum/ui/widgets"
 )
 
 // Current active view in the navigation
 type NavView int
 
+const NavViewNone NavView = -1
+
 const (
 	NavViewVaults NavView = iota
-	NavViewPasswords
+	NavViewAddItem
+	NavViewItems
 	NavViewGenerator
 	NavViewChecker
 	NavViewSettings
@@ -37,113 +46,261 @@ type NavigationState struct {
 	appState         *app.AppState
 	contentContainer *fyne.Container
 	sidebarContainer *fyne.Container
+	sidebarCollapsed bool
 }
 
 func ShowMainScreen(w fyne.Window, fyneApp fyne.App, appState *app.AppState) {
 	w.SetTitle("PassQuantum - " + appState.CurrentVault)
-	w.Resize(fyne.NewSize(1100, 700))
 
-	// Create navigation state
 	navState := &NavigationState{
-		currentView: NavViewPasswords,
+		currentView: NavViewItems,
 		window:      w,
 		app:         fyneApp,
 		appState:    appState,
 	}
 
-	// Create content container that will be dynamically updated
 	navState.contentContainer = container.NewMax()
 	navState.sidebarContainer = container.NewMax()
 
-	// Build initial UI
 	navState.rebuildUI()
 
-	bgContainer := theme.CreateBackgroundContainer(navState.sidebarContainer)
-	w.SetContent(bgContainer)
+	bg := canvas.NewRectangle(theme.ColorBg)
+	w.SetContent(container.NewStack(bg, navState.sidebarContainer))
 
-	// ── Face recognition: restart continuous monitor ───────────────────────
-	// OnLost and OnOK are wired globally in main.go.  We just tell Python to
-	// (re-)start monitoring so it covers every screen from this point on.
 	if guard := appState.FaceGuard; guard != nil {
 		guard.SendCommand("START_MONITOR")
 	}
 }
 
-// rebuildUI rebuilds the entire UI with current state
+func (ns *NavigationState) breadcrumbs() []string {
+	base := "PassQuantum"
+	switch ns.currentView {
+	case NavViewVaults:
+		return []string{base, "Vaults"}
+	case NavViewAddItem:
+		return []string{base, ns.appState.CurrentVault, "Add item"}
+	case NavViewItems:
+		return []string{base, ns.appState.CurrentVault, "Items"}
+	case NavViewGenerator:
+		return []string{base, "Generator"}
+	case NavViewChecker:
+		return []string{base, "Analyzer"}
+	case NavViewSettings:
+		return []string{base, "Settings"}
+	default:
+		return []string{base}
+	}
+}
+
 func (ns *NavigationState) rebuildUI() {
-	// Create navigation items with current active state
-	navItems := []theme.NavigationItem{
-		{
-			Icon:     "📦",
-			Label:    "Vaults",
-			OnClick:  func() { ns.switchView(NavViewVaults) },
-			IsActive: ns.currentView == NavViewVaults,
-		},
-		{
-			Icon:     "🔑",
-			Label:    "Passwords",
-			OnClick:  func() { ns.switchView(NavViewPasswords) },
-			IsActive: ns.currentView == NavViewPasswords,
-		},
-		{
-			Icon:     "🔐",
-			Label:    "Generate",
-			OnClick:  func() { ns.switchView(NavViewGenerator) },
-			IsActive: ns.currentView == NavViewGenerator,
-		},
-		{
-			Icon:     "🔍",
-			Label:    "Check Password",
-			OnClick:  func() { ns.switchView(NavViewChecker) },
-			IsActive: ns.currentView == NavViewChecker,
-		},
-		{
-			Icon:     "⚙️",
-			Label:    "Settings",
-			OnClick:  func() { ns.switchView(NavViewSettings) },
-			IsActive: ns.currentView == NavViewSettings,
-		},
+	sidebarBg := canvas.NewRectangle(theme.ColorSidebarBg)
+
+	// Brand section
+	brandIconBg := canvas.NewRectangle(theme.ColorAccentSoft)
+	brandIconBg.CornerRadius = theme.RadiusInput
+	brandIconBg.SetMinSize(fyne.NewSize(28, 28))
+
+	brandIconBorder := canvas.NewRectangle(color.Transparent)
+	brandIconBorder.CornerRadius = theme.RadiusInput
+	brandIconBorder.StrokeWidth = 1
+	brandIconBorder.StrokeColor = theme.ColorAccentLine
+	brandIconBorder.FillColor = color.Transparent
+	brandIconBorder.SetMinSize(fyne.NewSize(28, 28))
+
+	var brandIconInner fyne.CanvasObject
+	if img, _, err := image.Decode(bytes.NewReader(assets.LogoImage)); err == nil {
+		logoImg := canvas.NewImageFromImage(img)
+		logoImg.FillMode = canvas.ImageFillContain
+		logoImg.SetMinSize(fyne.NewSize(20, 20))
+		brandIconInner = logoImg
+	} else {
+		ico := canvas.NewImageFromResource(theme.IconAtom)
+		ico.SetMinSize(fyne.NewSize(16, 16))
+		brandIconInner = ico
 	}
 
-	lockItem := theme.NavigationItem{
-		Icon:  "🔒",
-		Label: "Lock & Exit",
-		OnClick: func() {
+	brandIcon := container.NewStack(brandIconBg, brandIconBorder, container.NewCenter(brandIconInner))
+	brandIconWrap := container.NewGridWrap(fyne.NewSize(28, 28), brandIcon)
+
+	brandName := canvas.NewText("PassQuantum", theme.ColorTextPrimary)
+	brandName.TextSize = 13
+	brandName.TextStyle = fyne.TextStyle{Bold: true}
+
+	brandMeta := canvas.NewText("PQ-SAFE", theme.ColorFg2)
+	brandMeta.TextSize = 10
+	brandMeta.TextStyle = fyne.TextStyle{Monospace: true}
+
+	brandText := container.NewVBox(brandName, brandMeta)
+	brandRow := container.NewHBox(brandIconWrap, brandText)
+	brandSection := container.NewPadded(brandRow)
+
+	// Nav items per section
+	type navEntry struct {
+		icon   *fyne.StaticResource
+		label  string
+		view   NavView
+		action func()
+	}
+
+	vaultSection := []navEntry{
+		{theme.IconVault, "Vaults", NavViewVaults, nil},
+		{theme.IconPlus, "Add item", NavViewAddItem, nil},
+		{theme.IconKey, "Items", NavViewItems, nil},
+	}
+	toolsSection := []navEntry{
+		{theme.IconWand, "Generate", NavViewGenerator, nil},
+		{theme.IconShieldCheck, "Analyze", NavViewChecker, nil},
+	}
+
+	collapseIcon := theme.IconPanelLeftClose
+	collapseLabel := "Collapse"
+	if ns.sidebarCollapsed {
+		collapseIcon = theme.IconPanelLeftOpen
+		collapseLabel = "Expand"
+	}
+
+	systemSection := []navEntry{
+		{theme.IconSettings, "Settings", NavViewSettings, nil},
+		{collapseIcon, collapseLabel, NavViewNone, func() {
+			ns.sidebarCollapsed = !ns.sidebarCollapsed
+			ns.rebuildUI()
+		}},
+		{theme.IconLock, "Lock vault", NavViewNone, func() {
 			ns.appState.ClearSensitiveState()
 			ns.app.Quit()
-		},
-		IsActive: false,
+		}},
 	}
 
-	// Create sidebar
-	sidebar := theme.CreateNavigationSidebar(navItems, lockItem, 220)
+	buildSection := func(eyebrow string, entries []navEntry) fyne.CanvasObject {
+		items := []fyne.CanvasObject{
+			container.NewPadded(theme.SectionEyebrow(eyebrow)),
+		}
+		for _, e := range entries {
+			entry := e
+			isActive := entry.view != NavViewNone && ns.currentView == entry.view
+			navItem := theme.NewNavItem(entry.icon, entry.label, isActive, func() {
+				if entry.action != nil {
+					entry.action()
+				} else {
+					ns.switchView(entry.view)
+				}
+			})
+			items = append(items, navItem)
+		}
+		return container.NewVBox(items...)
+	}
 
-	// Update content based on current view
+	vaultNav := buildSection("VAULT", vaultSection)
+	toolsNav := buildSection("TOOLS", toolsSection)
+	systemNav := buildSection("SYSTEM", systemSection)
+
+	divider1 := canvas.NewRectangle(theme.ColorLine1)
+	divider1.SetMinSize(fyne.NewSize(0, 0.5))
+	divider2 := canvas.NewRectangle(theme.ColorLine1)
+	divider2.SetMinSize(fyne.NewSize(0, 0.5))
+	divider3 := canvas.NewRectangle(theme.ColorLine1)
+	divider3.SetMinSize(fyne.NewSize(0, 0.5))
+
+	var sidebarFixed *fyne.Container
+
+	if ns.sidebarCollapsed {
+		// Collapsed: icon-only narrow sidebar (56px)
+		makeIconBtn := func(icon *fyne.StaticResource, view NavView, action func()) fyne.CanvasObject {
+			isActive := view != NavViewNone && ns.currentView == view
+			return theme.NewNavItem(icon, "", isActive, func() {
+				if action != nil {
+					action()
+				} else {
+					ns.switchView(view)
+				}
+			})
+		}
+
+		collapseDivider := canvas.NewRectangle(theme.ColorLine1)
+		collapseDivider.SetMinSize(fyne.NewSize(0, 0.5))
+
+		iconNav := container.NewVBox(
+			container.NewCenter(brandIconWrap),
+			divider1,
+			makeIconBtn(theme.IconVault, NavViewVaults, nil),
+			makeIconBtn(theme.IconPlus, NavViewAddItem, nil),
+			makeIconBtn(theme.IconKey, NavViewItems, nil),
+			divider2,
+			makeIconBtn(theme.IconWand, NavViewGenerator, nil),
+			makeIconBtn(theme.IconShieldCheck, NavViewChecker, nil),
+			divider3,
+			makeIconBtn(theme.IconSettings, NavViewSettings, nil),
+			collapseDivider,
+			makeIconBtn(collapseIcon, NavViewNone, func() {
+				ns.sidebarCollapsed = !ns.sidebarCollapsed
+				ns.rebuildUI()
+			}),
+			makeIconBtn(theme.IconLock, NavViewNone, func() {
+				ns.appState.ClearSensitiveState()
+				ns.app.Quit()
+			}),
+		)
+
+		collapsedInner := container.NewBorder(iconNav, nil, nil, nil)
+		collapsedPadded := container.NewPadded(collapsedInner)
+		sidebar := container.NewStack(sidebarBg, collapsedPadded)
+		sidebarFixed = container.NewGridWrap(fyne.NewSize(56, 0), sidebar)
+	} else {
+		// Expanded: full sidebar with labels
+		navContent := container.NewVBox(
+			brandSection,
+			divider1,
+			vaultNav,
+			divider2,
+			toolsNav,
+			divider3,
+			systemNav,
+		)
+
+		sidebarInner := container.NewBorder(navContent, nil, nil, nil)
+		sidebarPadded := container.NewPadded(sidebarInner)
+		sidebar := container.NewStack(sidebarBg, sidebarPadded)
+		sidebarFixed = container.NewGridWrap(fyne.NewSize(theme.SidebarWidth, 0), sidebar)
+	}
+
+	// Topbar
+	pills := []fyne.CanvasObject{
+		theme.StatusPill("Vault: "+ns.appState.CurrentVault, theme.PillAccent),
+	}
+	if ns.appState.FaceGuard != nil {
+		pills = append(pills, theme.StatusPill("Watching: ON", theme.PillOk))
+	}
+
+	topbar := theme.Topbar(ns.breadcrumbs(), pills)
+
+	// Content area
 	ns.updateContent()
 
-	// Create split layout: sidebar on left, content on right
-	mainLayout := container.NewBorder(nil, nil, sidebar, nil, ns.contentContainer)
+	contentScroll := container.NewVScroll(ns.contentContainer)
 
-	// Update the main container
+	mainLayout := container.NewBorder(topbar, nil, sidebarFixed, nil, contentScroll)
+
 	ns.sidebarContainer.Objects = []fyne.CanvasObject{mainLayout}
 	ns.sidebarContainer.Refresh()
 }
 
-// switchView changes the active view and updates UI
 func (ns *NavigationState) switchView(view NavView) {
 	ns.currentView = view
+	crumbs := ns.breadcrumbs()
+	ns.window.SetTitle("PassQuantum — " + crumbs[len(crumbs)-1])
 	ns.rebuildUI()
 }
 
-// updateContent updates the content area based on current view
 func (ns *NavigationState) updateContent() {
 	var content fyne.CanvasObject
 
 	switch ns.currentView {
 	case NavViewVaults:
 		content = ns.createVaultsView()
-	case NavViewPasswords:
+	case NavViewAddItem:
 		content = ns.createPasswordsView()
+	case NavViewItems:
+		content = ns.createItemsView()
 	case NavViewGenerator:
 		content = ns.createGeneratorView()
 	case NavViewChecker:
@@ -151,14 +308,15 @@ func (ns *NavigationState) updateContent() {
 	case NavViewSettings:
 		content = ns.createSettingsView()
 	default:
-		content = ns.createPasswordsView()
+		content = ns.createItemsView()
 	}
 
-	ns.contentContainer.Objects = []fyne.CanvasObject{content}
+	padded := container.NewPadded(content)
+
+	ns.contentContainer.Objects = []fyne.CanvasObject{padded}
 	ns.contentContainer.Refresh()
 }
 
-// createPasswordsView creates the add password form view
 func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 	type cardPayload struct {
 		Subtype string `json:"subtype"`
@@ -168,96 +326,92 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 		CVV     string `json:"cvv"`
 	}
 
+	backBtn := theme.CreateGhostButton("All items", func() {
+		ns.switchView(NavViewItems)
+	})
+
+	header := theme.PageHeader(
+		"PASSQUANTUM / "+ns.appState.CurrentVault,
+		"Add vault item",
+		"Create a new encrypted entry in this vault.",
+		backBtn,
+	)
+
 	passwordInput := widget.NewPasswordEntry()
 	passwordInput.PlaceHolder = "Enter password"
 
-	strengthTrack := canvas.NewRectangle(color.NRGBA{R: 31, G: 41, B: 55, A: 255})
-	strengthTrack.CornerRadius = 6
-	strengthTrack.SetMinSize(fyne.NewSize(240, 14))
-
-	strengthFill := canvas.NewRectangle(scoreColor(strength.ScoreVeryWeak))
-	strengthFill.CornerRadius = 6
-	strengthFill.Resize(fyne.NewSize(48, 14))
-
-	strengthBar := container.NewGridWrap(
-		fyne.NewSize(240, 14),
-		container.NewWithoutLayout(strengthTrack, strengthFill),
-	)
-
-	strengthScore := canvas.NewText("Very Weak", theme.ColorTextPrimary)
-	strengthScore.TextStyle = fyne.TextStyle{Bold: true}
-	strengthScore.TextSize = 12
-
-	strengthCrack := canvas.NewText("Crack time: Instantly", theme.ColorTextSecondary)
+	// Segmented strength meter
+	strengthMeter := theme.SegmentedStrengthMeterFlex(0)
+	strengthLabel := canvas.NewText("", theme.ColorTextSecondary)
+	strengthLabel.TextSize = 11
+	strengthLabel.TextStyle = fyne.TextStyle{Monospace: true}
+	strengthCrack := canvas.NewText("", theme.ColorFg2)
 	strengthCrack.TextSize = 11
+	strengthCrack.TextStyle = fyne.TextStyle{Monospace: true}
 
 	strengthIssues := container.NewVBox(
-		newStrengthText("Start typing to analyze password strength.", theme.ColorTextSecondary, 11, false),
+		newStrengthText("Start typing to analyze password strength.", theme.ColorFg2, 11, false),
+	)
+
+	strengthContainer := container.NewVBox(
+		container.NewBorder(nil, nil, nil, strengthLabel, strengthMeter),
+		strengthCrack,
+		strengthIssues,
 	)
 
 	updateAddStrength := func(value string) {
 		result := strength.Analyze(value, storedVaultPasswords(ns.appState))
 
 		if result.EasterEggMode {
-			strengthFill.FillColor = scoreColor(result.Score)
-			strengthFill.Resize(fyne.NewSize(240, 14))
-			strengthFill.Refresh()
-
-			strengthScore.Text = "Password Game Mode"
-			strengthScore.Refresh()
-
+			level := int(result.Score) + 1
+			if level > 5 {
+				level = 5
+			}
+			strengthMeter = theme.SegmentedStrengthMeterFlex(level)
+			strengthLabel.Text = "Password Game Mode"
+			strengthLabel.Refresh()
 			strengthCrack.Text = "neal.fun trigger detected"
 			strengthCrack.Refresh()
-
 			strengthIssues.Objects = []fyne.CanvasObject{NewEasterEggPanel(result.EasterEggRules)}
 			strengthIssues.Refresh()
 			return
 		}
 
-		fillWidth := float32(48)
+		level := 0
 		if value != "" {
-			fillWidth = 240 * float32(int(result.Score)+1) / 5
+			level = int(result.Score) + 1
+			if level > 5 {
+				level = 5
+			}
 		}
-		if fillWidth < 1 {
-			fillWidth = 1
-		}
 
-		strengthFill.FillColor = scoreColor(result.Score)
-		strengthFill.Resize(fyne.NewSize(fillWidth, 14))
-		strengthFill.Refresh()
-
-		strengthScore.Text = result.ScoreLabel
-		strengthScore.Refresh()
-
-		strengthCrack.Text = "Crack time: " + result.CrackTime
-		strengthCrack.Refresh()
+		newMeter := theme.SegmentedStrengthMeterFlex(level)
+		strengthContainer.Objects[0] = container.NewBorder(nil, nil, nil, strengthLabel, newMeter)
+		strengthContainer.Refresh()
 
 		if value == "" {
+			strengthLabel.Text = ""
+			strengthLabel.Refresh()
+			strengthCrack.Text = ""
+			strengthCrack.Refresh()
 			strengthIssues.Objects = []fyne.CanvasObject{
-				newStrengthText("Start typing to analyze password strength.", theme.ColorTextSecondary, 11, false),
+				newStrengthText("Start typing to analyze password strength.", theme.ColorFg2, 11, false),
 			}
 		} else {
+			strengthLabel.Text = result.ScoreLabel
+			strengthLabel.Refresh()
+			strengthCrack.Text = "Crack time: " + result.CrackTime
+			strengthCrack.Refresh()
 			strengthIssues.Objects = []fyne.CanvasObject{NewIssuesList(result.Issues)}
 		}
 		strengthIssues.Refresh()
 	}
 
 	passwordInput.OnChanged = updateAddStrength
-
-	passwordStrengthBar := theme.CreateCard(container.NewVBox(
-		theme.CreateLabel("STRENGTH RESULT", 11, theme.ColorPurple, true),
-		widget.NewLabel(""),
-		container.NewHBox(strengthBar, widget.NewLabel("  "), strengthScore),
-		widget.NewLabel(""),
-		strengthCrack,
-		widget.NewLabel(""),
-		strengthIssues,
-	), 700, 220, true)
-
 	updateAddStrength(passwordInput.Text)
 
 	serviceInput := widget.NewEntry()
-	serviceInput.PlaceHolder = "Service name (e.g., Gmail, GitHub)"
+	serviceInput.PlaceHolder = "e.g. github.com"
 
 	usernameInput := widget.NewEntry()
 	usernameInput.PlaceHolder = "Username or email"
@@ -266,9 +420,9 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 	noteTitleInput.PlaceHolder = "Note title"
 	noteContentInput := widget.NewMultiLineEntry()
 	noteContentInput.SetMinRowsVisible(5)
-	noteContentInput.PlaceHolder = "Write your cyphered note here"
+	noteContentInput.PlaceHolder = "Plaintext is encrypted at rest. Markdown is preserved."
 
-	cardTypeSelect := widget.NewSelect([]string{"Credit", "Debit"}, nil)
+	cardTypeSelect := widget.NewSelect([]string{"Credit", "Debit", "Prepaid"}, nil)
 	cardTypeSelect.SetSelected("Credit")
 	cardNameInput := widget.NewEntry()
 	cardNameInput.PlaceHolder = "Card nickname"
@@ -281,116 +435,80 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 	cardCVVInput := widget.NewPasswordEntry()
 	cardCVVInput.PlaceHolder = "CVV"
 
-	itemTypeSelect := widget.NewSelect([]string{"Password", "Cyphered Note", "Card"}, nil)
-	itemTypeSelect.SetSelected("Password")
-
-	styledWideField := func(input *widget.Entry) fyne.CanvasObject {
-		return container.NewCenter(theme.CreateStyledInput(input, 650, 42))
-	}
-
-	styledWideSelect := func(selectWidget *widget.Select) fyne.CanvasObject {
-		bg := canvas.NewRectangle(theme.ColorInputBg)
-		bg.CornerRadius = theme.BorderRadius
-		bg.SetMinSize(fyne.NewSize(650, 42))
-		return container.NewCenter(container.NewMax(bg, container.NewPadded(selectWidget)))
-	}
+	itemTypes := []string{"Password", "Cyphered Note", "Card"}
+	activeItemType := 0 // 0=Password, 1=Note, 2=Card
 
 	passwordSection := container.NewVBox(
-		theme.CreateLabel("SERVICE NAME", 11, theme.ColorPurple, true),
-		styledWideField(serviceInput),
-		widget.NewLabel(""),
-		theme.CreateLabel("USERNAME / EMAIL", 11, theme.ColorPurple, true),
-		styledWideField(usernameInput),
-		widget.NewLabel(""),
-		theme.CreateLabel("PASSWORD", 11, theme.ColorPurple, true),
-		styledWideField(passwordInput),
-		widget.NewLabel(""),
-		container.NewCenter(passwordStrengthBar),
+		theme.FieldLabel("SERVICE", nil),
+		serviceInput,
+		theme.FieldLabel("USERNAME / EMAIL", nil),
+		usernameInput,
+		theme.FieldLabel("PASSWORD", nil),
+		passwordInput,
+		strengthContainer,
 	)
 
 	noteSection := container.NewVBox(
-		theme.CreateLabel("NOTE TITLE", 11, theme.ColorPurple, true),
-		styledWideField(noteTitleInput),
-		widget.NewLabel(""),
-		theme.CreateLabel("CYPHERED NOTE", 11, theme.ColorPurple, true),
-		container.NewCenter(theme.CreateStyledInput(noteContentInput, 650, 170)),
+		theme.FieldLabel("NOTE TITLE", nil),
+		noteTitleInput,
+		theme.FieldLabel("CYPHERED NOTE", nil),
+		noteContentInput,
 	)
 
 	cardSection := container.NewVBox(
-		theme.CreateLabel("CARD TYPE", 11, theme.ColorPurple, true),
-		styledWideSelect(cardTypeSelect),
-		widget.NewLabel(""),
-		theme.CreateLabel("CARD NICKNAME", 11, theme.ColorPurple, true),
-		styledWideField(cardNameInput),
-		widget.NewLabel(""),
-		theme.CreateLabel("CARD HOLDER", 11, theme.ColorPurple, true),
-		styledWideField(cardHolderInput),
-		widget.NewLabel(""),
-		theme.CreateLabel("CARD NUMBER", 11, theme.ColorPurple, true),
-		styledWideField(cardNumberInput),
-		widget.NewLabel(""),
+		theme.FieldLabel("CARD TYPE", nil),
+		cardTypeSelect,
+		theme.FieldLabel("CARD NICKNAME", nil),
+		cardNameInput,
+		theme.FieldLabel("CARD HOLDER", nil),
+		cardHolderInput,
+		theme.FieldLabel("CARD NUMBER", nil),
+		cardNumberInput,
 		container.NewGridWithColumns(2,
-			container.NewVBox(
-				theme.CreateLabel("EXPIRY", 11, theme.ColorPurple, true),
-				container.NewCenter(theme.CreateStyledInput(cardExpiryInput, 300, 42)),
-			),
-			container.NewVBox(
-				theme.CreateLabel("CVV", 11, theme.ColorPurple, true),
-				container.NewCenter(theme.CreateStyledInput(cardCVVInput, 300, 42)),
-			),
+			container.NewVBox(theme.FieldLabel("EXPIRY", nil), cardExpiryInput),
+			container.NewVBox(theme.FieldLabel("CVV", nil), cardCVVInput),
 		),
 	)
 
-	// Card background rects are declared here so refreshSections can update their
-	// min-sizes live whenever the item type changes.
-	const cardW float32 = 780
-	cardBg := canvas.NewRectangle(theme.ColorCardBg)
-	cardBg.CornerRadius = theme.BorderRadius
-
-	borderGlow := canvas.NewRectangle(theme.ColorBorderCyan)
-	borderGlow.CornerRadius = theme.BorderRadius
-	borderGlow.FillColor = color.NRGBA{R: theme.ColorBorderCyan.R, G: theme.ColorBorderCyan.G, B: theme.ColorBorderCyan.B, A: 120}
-
-	outerGlow := canvas.NewRectangle(color.NRGBA{R: theme.ColorBorderCyan.R, G: theme.ColorBorderCyan.G, B: theme.ColorBorderCyan.B, A: 20})
-	outerGlow.CornerRadius = theme.BorderRadius + 2
-
-	setCardHeight := func(h float32) {
-		cardBg.SetMinSize(fyne.NewSize(cardW, h))
-		borderGlow.SetMinSize(fyne.NewSize(cardW+2, h+2))
-		outerGlow.SetMinSize(fyne.NewSize(cardW+6, h+6))
-		cardBg.Refresh()
-		borderGlow.Refresh()
-		outerGlow.Refresh()
-	}
-
 	var formContent *fyne.Container
+	var typeTabs fyne.CanvasObject
+	var buildTypeTabs func()
 
-	refreshSections := func(selected string) {
+	refreshSections := func(idx int) {
+		activeItemType = idx
 		passwordSection.Hide()
 		noteSection.Hide()
 		cardSection.Hide()
 
-		switch selected {
-		case "Cyphered Note":
+		switch idx {
+		case 1:
 			noteSection.Show()
-			setCardHeight(720)
-		case "Card":
+		case 2:
 			cardSection.Show()
-			setCardHeight(920)
 		default:
 			passwordSection.Show()
-			setCardHeight(920)
 		}
 
 		if formContent != nil {
 			formContent.Refresh()
 		}
-	}
-	itemTypeSelect.OnChanged = refreshSections
-	refreshSections(itemTypeSelect.Selected)
 
-	addBtn := theme.CreateNeonButton("➕ SAVE ITEM", func() {
-		itemType := itemTypeSelect.Selected
+		// Rebuild tabs to update active indicator
+		buildTypeTabs()
+		if formContent != nil {
+			formContent.Objects[0] = typeTabs
+			formContent.Refresh()
+		}
+	}
+
+	buildTypeTabs = func() {
+		typeTabs = theme.UnderlineTabs(itemTypes, activeItemType, refreshSections)
+	}
+	buildTypeTabs()
+	refreshSections(0)
+
+	saveBtn := theme.CreatePrimaryButton("Save item", func() {
+		itemType := itemTypes[activeItemType]
 		service := serviceInput.Text
 		username := usernameInput.Text
 		secret := passwordInput.Text
@@ -502,380 +620,494 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 				cardNumberInput.SetText("")
 				cardExpiryInput.SetText("")
 				cardCVVInput.SetText("")
-				widgets.ShowAppInformation("Success", "✓ Item saved successfully!", ns.window)
+				widgets.ShowAppInformation("Success", "Item saved successfully!", ns.window)
 			})
 		}()
-	}, 220, 48)
+	})
 
-	viewBtn := theme.CreateNeonButton("📋 VIEW ALL ITEMS", func() {
-		ShowPasswordsView(ns.window, ns.app, ns.appState)
-	}, 150, 48)
-
-	// Enhanced header
-	headerText := theme.CreateHeaderText("ADD VAULT ITEM", 18)
-	headerSection := container.NewVBox(headerText, theme.CreateGlowingDivider())
+	cancelBtn := theme.CreateGhostButton("Cancel", func() {
+		ns.switchView(NavViewItems)
+	})
 
 	formContent = container.NewVBox(
-		headerSection,
-		widget.NewLabel(""),
-		theme.CreateLabel("ITEM TYPE", 11, theme.ColorPurple, true),
-		styledWideSelect(itemTypeSelect),
-		widget.NewLabel(""),
+		typeTabs,
 		passwordSection,
 		noteSection,
 		cardSection,
-		widget.NewLabel(""),
-		container.NewCenter(addBtn),
-		widget.NewLabel(""),
-		container.NewCenter(viewBtn),
 	)
 
-	formCard := container.NewStack(
-		container.NewCenter(outerGlow),
-		container.NewCenter(borderGlow),
-		container.NewCenter(cardBg),
-		container.NewPadded(formContent),
-	)
+	footer := theme.FormFooter("Encrypted on save: AES-256-GCM", cancelBtn, saveBtn)
 
-	vaultHeaderText := theme.CreateLabel("📦 VAULT: "+ns.appState.CurrentVault, 13, theme.ColorAccentCyan, true)
+	formCard := theme.CardWithHeader("", "", nil, formContent)
 
-	mainContent := container.NewVBox(
-		container.NewCenter(vaultHeaderText),
-		widget.NewLabel(""),
-		container.NewCenter(formCard),
-	)
-
-	return container.NewPadded(container.NewVScroll(mainContent))
+	return container.NewVBox(header, formCard, footer)
 }
 
-// createVaultsView creates the vault selection view
 func (ns *NavigationState) createVaultsView() fyne.CanvasObject {
 	vaults := app.ListVaults()
 
-	headerText := theme.CreateLabel("YOUR VAULTS", 18, theme.ColorAccentCyan, true)
-	headerSection := container.NewVBox(headerText, theme.CreateDivider())
+	newVaultBtn := theme.CreatePrimaryButtonWithIcon("New vault", theme.IconPlus, func() {
+		showCreateVaultDialog(ns.window, ns.app, ns.appState)
+	})
+
+	header := theme.PageHeader(
+		"PASSQUANTUM / VAULTS",
+		"Your vaults",
+		"Encrypted containers for passwords, cards, and notes.",
+		newVaultBtn,
+	)
 
 	var vaultItems []fyne.CanvasObject
 	if len(vaults) == 0 {
-		emptyMsg := theme.CreateLabel("No vaults found. Create one to get started.", 12, theme.ColorTextSecondary, false)
+		emptyMsg := canvas.NewText("No vaults found. Create one to get started.", theme.ColorFg2)
+		emptyMsg.TextSize = 13
 		vaultItems = append(vaultItems, container.NewCenter(emptyMsg))
 	} else {
 		for _, vaultName := range vaults {
 			vaultCard := createVaultCard(ns.window, ns.app, ns.appState, vaultName)
 			vaultItems = append(vaultItems, vaultCard)
-			vaultItems = append(vaultItems, widget.NewLabel(""))
 		}
 	}
 
-	newVaultBtn := theme.CreateNeonButton("+ CREATE VAULT", func() {
-		showCreateVaultDialog(ns.window, ns.app, ns.appState)
-	}, 200, 44)
-
-	/*
-		generatePasswordBtn := theme.CreateNeonButton("🔐 GENERATE PASSWORD", func() {
-			ShowPasswordGeneratorNoVault(ns.window, ns.app, ns.appState)
-		}, 220, 44)
-	*/
-
-	scrollContent := container.NewVBox(vaultItems...)
-	scrollBox := container.NewVScroll(scrollContent)
-	scrollBox.SetMinSize(fyne.NewSize(750, 420))
-
-	buttonContainer := container.NewHBox(newVaultBtn) //generatePasswordBtn
-
-	mainContent := container.NewVBox(
-		headerSection,
-		widget.NewLabel(""),
-		scrollBox,
-		widget.NewLabel(""),
-		container.NewCenter(buttonContainer),
+	encryptionInfo := theme.CollapsibleCardWithHeader("ENCRYPTION", "Vault security", nil,
+		theme.KeyValueTable([]theme.KVItem{
+			{Key: "Algorithm", Value: "AES-256-GCM", Detail: "96-bit IV, 128-bit auth tag"},
+			{Key: "Key encapsulation", Value: "ML-KEM-768 (Kyber)", Detail: "NIST FIPS 203"},
+			{Key: "Password KDF", Value: "Argon2id", Detail: "m=64 MiB, t=3, p=4, 16-byte salt"},
+			{Key: "Random source", Value: "crypto/rand", Detail: "OS CSPRNG"},
+		}),
 	)
 
-	return container.NewPadded(mainContent)
+	return container.NewVBox(
+		header,
+		container.NewVBox(vaultItems...),
+		encryptionInfo,
+	)
 }
 
-// createGeneratorView creates the password generator view
 func (ns *NavigationState) createGeneratorView() fyne.CanvasObject {
-	settings := DefaultPasswordGeneratorSettings()
 	generatedPasswordDisplay := widget.NewEntry()
 	generatedPasswordDisplay.PlaceHolder = "Generated password will appear here"
 	generatedPasswordDisplay.MultiLine = false
 
-	lengthInput := widget.NewEntry()
-	lengthInput.SetText("16")
-	lengthInput.OnChanged = func(s string) {
-		if s != "" {
-			fmt.Sscanf(s, "%d", &settings.Length)
-			if settings.Length < 4 {
-				settings.Length = 4
-			}
-			if settings.Length > 128 {
-				settings.Length = 128
-			}
-		}
+	gc := newGeneratorControls(ns.window,
+		func() string { return generatedPasswordDisplay.Text },
+		func(s string) { generatedPasswordDisplay.SetText(s) },
+	)
+
+	// Auto-generate on load
+	if initial, err := GeneratePassword(*gc.Settings); err == nil {
+		generatedPasswordDisplay.SetText(initial)
 	}
 
-	uppercaseCheck := widget.NewCheck("Uppercase Letters (A-Z)", func(b bool) {
-		settings.UseUppercase = b
-	})
-	uppercaseCheck.SetChecked(settings.UseUppercase)
+	header := theme.PageHeader(
+		"PASSQUANTUM / GENERATOR",
+		"Password generator",
+		"Cryptographically secure random password generation.",
+		theme.StatusPill("CSPRNG: crypto/rand", theme.PillAccent),
+	)
 
-	lowercaseCheck := widget.NewCheck("Lowercase Letters (a-z)", func(b bool) {
-		settings.UseLowercase = b
-	})
-	lowercaseCheck.SetChecked(settings.UseLowercase)
-
-	numbersCheck := widget.NewCheck("Numbers (0-9)", func(b bool) {
-		settings.UseNumbers = b
-	})
-	numbersCheck.SetChecked(settings.UseNumbers)
-
-	specialCharsCheck := widget.NewCheck("Special Characters (!@#$%^&*)", func(b bool) {
-		settings.UseSpecialChars = b
-	})
-	specialCharsCheck.SetChecked(settings.UseSpecialChars)
-
-	ambiguousCheck := widget.NewCheck("Exclude Ambiguous (i, l, 1, L, o, 0, O)", func(b bool) {
-		settings.ExcludeAmbiguous = b
-	})
-	ambiguousCheck.SetChecked(settings.ExcludeAmbiguous)
-
-	generateBtn := theme.CreateNeonButton("🔄 GENERATE", func() {
-		password, err := GeneratePassword(settings)
+	// Output card
+	regenerateBtn := theme.CreateGhostButton("Regenerate", func() {
+		password, err := GeneratePassword(*gc.Settings)
 		if err != nil {
 			widgets.ShowAppError(err, ns.window)
 			return
 		}
 		generatedPasswordDisplay.SetText(password)
-	}, 160, 44)
+	})
 
-	copyGeneratedBtn := theme.CreateNeonButton("COPY", func() {
+	passwordDisplay := canvas.NewText("", theme.ColorTextPrimary)
+	passwordDisplay.TextSize = 22
+	passwordDisplay.TextStyle = fyne.TextStyle{Monospace: true}
+
+	generatedPasswordDisplay.OnChanged = func(s string) {
+		passwordDisplay.Text = s
+		passwordDisplay.Refresh()
+	}
+	// Trigger initial display update
+	passwordDisplay.Text = generatedPasswordDisplay.Text
+
+	displayBg := canvas.NewRectangle(theme.ColorSidebarBg)
+	displayBg.CornerRadius = theme.Space2
+	displayBorder := canvas.NewRectangle(color.Transparent)
+	displayBorder.CornerRadius = theme.Space2
+	displayBorder.StrokeWidth = 1
+	displayBorder.StrokeColor = theme.ColorLine2
+	displayBorder.FillColor = color.Transparent
+
+	displayBox := container.NewStack(
+		displayBg, displayBorder,
+		container.NewPadded(container.NewPadded(passwordDisplay)),
+	)
+
+	copyBtn := theme.CreateDefaultButton("Copy", func() {
 		if generatedPasswordDisplay.Text != "" {
 			ns.window.Clipboard().SetContent(generatedPasswordDisplay.Text)
 			widgets.ShowAppInformation("Copied", "Password copied to clipboard!", ns.window)
-		} else {
-			widgets.ShowAppInformation("Empty", "Generate a password first!", ns.window)
 		}
-	}, 100, 44)
+	})
 
-	saveToVaultBtn := theme.CreateNeonButton("💾 SAVE TO VAULT", func() {
+	saveToVaultBtn := theme.CreatePrimaryButton("Save to vault", func() {
 		password := generatedPasswordDisplay.Text
 		if password == "" {
 			widgets.ShowAppInformation("Empty", "Generate a password first!", ns.window)
 			return
 		}
 		showSaveGeneratedPasswordDialog(ns.window, ns.app, ns.appState, password)
-	}, 180, 44)
+	})
 
-	headerText := theme.CreateHeaderText("PASSWORD GENERATOR", 18)
-	headerSection := container.NewVBox(headerText, theme.CreateGlowingDivider())
-
-	passwordDisplayLabel := theme.CreateLabel("GENERATED PASSWORD", 11, theme.ColorPurple, true)
-	passwordDisplayBox := theme.CreateStyledInput(generatedPasswordDisplay, 650, 42)
-
-	lengthLabel := theme.CreateLabel("PASSWORD LENGTH", 11, theme.ColorPurple, true)
-	styledLengthInput := theme.CreateStyledInput(lengthInput, 150, 42)
-
-	optionsLabel := theme.CreateLabel("OPTIONS", 11, theme.ColorPurple, true)
-
-	formContent := container.NewVBox(
-		headerSection,
-		widget.NewLabel(""),
-		lengthLabel,
-		container.NewCenter(styledLengthInput),
-		widget.NewLabel(""),
-		optionsLabel,
-		uppercaseCheck,
-		lowercaseCheck,
-		numbersCheck,
-		specialCharsCheck,
-		ambiguousCheck,
-		widget.NewLabel(""),
-		container.NewCenter(generateBtn),
-		widget.NewLabel(""),
-		passwordDisplayLabel,
-		container.NewCenter(passwordDisplayBox),
-		widget.NewLabel(""),
-		container.NewCenter(container.NewHBox(copyGeneratedBtn, saveToVaultBtn)),
+	outputBody := container.NewVBox(
+		displayBox,
+		container.NewHBox(copyBtn, saveToVaultBtn),
 	)
 
-	formCard := theme.CreateEnhancedCard(formContent, 750, 700)
+	outputCard := theme.CardWithHeader("OUTPUT", "Generated password", regenerateBtn, outputBody)
 
-	mainContent := container.NewVBox(
-		widget.NewLabel(""),
-		container.NewCenter(formCard),
+	// Length row: slider fills available space, entry shows numeric value on right
+	lengthRow := container.NewBorder(nil, nil, nil,
+		container.NewGridWrap(fyne.NewSize(52, 0), gc.LengthInput),
+		gc.LengthSlider,
 	)
 
-	return container.NewPadded(container.NewVScroll(mainContent))
+	// Options card
+	optionsBody := container.NewVBox(
+		theme.FieldLabel("LENGTH", nil),
+		lengthRow,
+		theme.FieldLabel("CHARACTER CLASSES", nil),
+		container.NewGridWithColumns(2,
+			gc.UppercaseCheck,
+			gc.LowercaseCheck,
+			gc.NumbersCheck,
+			gc.SpecialCharsCheck,
+		),
+		gc.AmbiguousCheck,
+	)
+
+	optionsCard := theme.CardWithHeader("CONFIGURATION", "Parameters", nil, optionsBody)
+
+	return container.NewVBox(header, outputCard, optionsCard)
 }
 
-// createCheckerView creates the password checker view
 func (ns *NavigationState) createCheckerView() fyne.CanvasObject {
+	header := theme.PageHeader(
+		"PASSQUANTUM / ANALYZER",
+		"Password strength analyzer",
+		"Offline analysis. Nothing leaves your machine.",
+		theme.StatusPill("Offline: local only", theme.PillOk),
+	)
 
 	passwordInput := widget.NewPasswordEntry()
 	passwordInput.PlaceHolder = "Enter password to check"
 
-	headerText := theme.CreateHeaderText("PASSWORD CHECKER", 18)
-	headerSection := container.NewVBox(headerText, theme.CreateGlowingDivider())
+	strengthMeter := theme.SegmentedStrengthMeterFlex(0)
+	strengthLabel := canvas.NewText("", theme.ColorTextSecondary)
+	strengthLabel.TextSize = 11
+	strengthLabel.TextStyle = fyne.TextStyle{Monospace: true}
 
-	passwordLabel := theme.CreateLabel("ENTER PASSWORD", 11, theme.ColorPurple, true)
-	styledPasswordInput := theme.CreateStyledInput(passwordInput, 650, 42)
+	lengthVal := canvas.NewText("-", theme.ColorTextPrimary)
+	lengthVal.TextSize = 13
+	charsetVal := canvas.NewText("-", theme.ColorTextPrimary)
+	charsetVal.TextSize = 13
+	entropyVal := canvas.NewText("-", theme.ColorTextPrimary)
+	entropyVal.TextSize = 13
+	crackVal := canvas.NewText("-", theme.ColorTextPrimary)
+	crackVal.TextSize = 13
 
-	track := canvas.NewRectangle(color.NRGBA{R: 31, G: 41, B: 55, A: 255})
-	track.CornerRadius = 6
-	track.SetMinSize(fyne.NewSize(240, 14))
+	issuesBox := container.NewVBox()
 
-	fill := canvas.NewRectangle(scoreColor(strength.ScoreVeryWeak))
-	fill.CornerRadius = 6
-	fill.Resize(fyne.NewSize(48, 14))
-
-	bar := container.NewGridWrap(
-		fyne.NewSize(240, 14),
-		container.NewWithoutLayout(track, fill),
+	analysisContainer := container.NewVBox(
+		container.NewBorder(nil, nil, nil, strengthLabel, strengthMeter),
 	)
 
-	scoreValue := canvas.NewText("Very Weak", theme.ColorTextPrimary)
-	scoreValue.TextStyle = fyne.TextStyle{Bold: true}
-	scoreValue.TextSize = 12
+	divider := canvas.NewRectangle(theme.ColorLine1)
+	divider.SetMinSize(fyne.NewSize(0, 1))
 
-	crackValue := canvas.NewText("Crack time: Instantly", theme.ColorTextSecondary)
-	crackValue.TextSize = 11
+	kvTable := theme.KeyValueTable([]theme.KVItem{
+		{Key: "Length", Value: "-"},
+		{Key: "Character set", Value: "-"},
+		{Key: "Estimated entropy", Value: "-"},
+		{Key: "Brute-force estimate", Value: "-"},
+	})
 
-	issuesBox := container.NewVBox(
-		newStrengthText("Start typing to analyze password strength.", theme.ColorTextSecondary, 11, false),
-	)
-
-	// Inline rects for strength section and outer card so sizes can be updated live.
-	const outerW float32 = 750
-	const outerHNormal float32 = 500
-	const sectionW float32 = 700
-	const sectionHNormal float32 = 220
-
-	sectionBg := canvas.NewRectangle(theme.ColorCardBg)
-	sectionBg.CornerRadius = theme.BorderRadius
-	sectionBg.SetMinSize(fyne.NewSize(sectionW, sectionHNormal))
-	sectionBorder := canvas.NewRectangle(theme.ColorBorderCyan)
-	sectionBorder.CornerRadius = theme.BorderRadius
-	sectionBorder.SetMinSize(fyne.NewSize(sectionW, sectionHNormal))
-
-	checkerBg := canvas.NewRectangle(theme.ColorCardBg)
-	checkerBg.CornerRadius = theme.BorderRadius
-	checkerBg.SetMinSize(fyne.NewSize(outerW, outerHNormal))
-	checkerBorder := canvas.NewRectangle(theme.ColorBorderCyan)
-	checkerBorder.CornerRadius = theme.BorderRadius
-	checkerBorder.FillColor = color.NRGBA{R: theme.ColorBorderCyan.R, G: theme.ColorBorderCyan.G, B: theme.ColorBorderCyan.B, A: 120}
-	checkerBorder.SetMinSize(fyne.NewSize(outerW+2, outerHNormal+2))
-	checkerOuter := canvas.NewRectangle(color.NRGBA{R: theme.ColorBorderCyan.R, G: theme.ColorBorderCyan.G, B: theme.ColorBorderCyan.B, A: 20})
-	checkerOuter.CornerRadius = theme.BorderRadius + 2
-	checkerOuter.SetMinSize(fyne.NewSize(outerW+6, outerHNormal+6))
-
-	setCheckerSize := func(w, h, sh float32) {
-		sectionBg.SetMinSize(fyne.NewSize(sh, h-280))
-		sectionBorder.SetMinSize(fyne.NewSize(sh, h-280))
-		sectionBg.Refresh()
-		sectionBorder.Refresh()
-		checkerBg.SetMinSize(fyne.NewSize(w, h))
-		checkerBorder.SetMinSize(fyne.NewSize(w+2, h+2))
-		checkerOuter.SetMinSize(fyne.NewSize(w+6, h+6))
-		checkerBg.Refresh()
-		checkerBorder.Refresh()
-		checkerOuter.Refresh()
-	}
+	hintText := canvas.NewText("Start typing to analyze password strength.", theme.ColorFg2)
+	hintText.TextSize = 12
+	hintText.TextStyle = fyne.TextStyle{Monospace: true}
 
 	updateStrength := func(value string) {
 		result := strength.Analyze(value, storedVaultPasswords(ns.appState))
 
 		if result.EasterEggMode {
-			fill.FillColor = scoreColor(result.Score)
-			fill.Resize(fyne.NewSize(240, 14))
-			fill.Refresh()
-			setCheckerSize(850, 700, sectionW+100)
+			level := int(result.Score) + 1
+			if level > 5 {
+				level = 5
+			}
+			newMeter := theme.SegmentedStrengthMeterFlex(level)
+			strengthLabel.Text = "Password Game Mode"
+			strengthLabel.Refresh()
 
-			scoreValue.Text = "Password Game Mode"
-			scoreValue.Refresh()
-
-			crackValue.Text = "neal.fun trigger detected"
-			crackValue.Refresh()
-
-			issuesBox.Objects = []fyne.CanvasObject{
+			analysisContainer.Objects = []fyne.CanvasObject{
+				container.NewBorder(nil, nil, nil, strengthLabel, newMeter),
+				divider,
 				NewEasterEggPanel(result.EasterEggRules),
 			}
-			issuesBox.Refresh()
+			analysisContainer.Refresh()
 			return
 		}
 
-		setCheckerSize(outerW, outerHNormal, sectionW)
-
-		fillWidth := float32(48)
+		level := 0
 		if value != "" {
-			fillWidth = 240 * float32(int(result.Score)+1) / 5
+			level = int(result.Score) + 1
+			if level > 5 {
+				level = 5
+			}
 		}
-		if fillWidth < 1 {
-			fillWidth = 1
-		}
 
-		fill.FillColor = scoreColor(result.Score)
-		fill.Resize(fyne.NewSize(fillWidth, 14))
-		fill.Refresh()
-
-		scoreValue.Text = result.ScoreLabel
-		scoreValue.Refresh()
-
-		crackValue.Text = "Crack time: " + result.CrackTime
-		crackValue.Refresh()
+		newMeter := theme.SegmentedStrengthMeterFlex(level)
 
 		if value == "" {
-			issuesBox.Objects = []fyne.CanvasObject{
-				newStrengthText("Start typing to analyze password strength.", theme.ColorTextSecondary, 11, false),
+			strengthLabel.Text = ""
+			strengthLabel.Refresh()
+			analysisContainer.Objects = []fyne.CanvasObject{
+				container.NewBorder(nil, nil, nil, strengthLabel, newMeter),
+				hintText,
 			}
 		} else {
-			issuesBox.Objects = []fyne.CanvasObject{NewIssuesList(result.Issues)}
+			strengthLabel.Text = result.ScoreLabel
+			strengthLabel.Refresh()
+			// Build character set description
+			var sets []string
+			for _, r := range value {
+				if r >= 'A' && r <= 'Z' {
+					sets = append(sets, "A-Z")
+					break
+				}
+			}
+			for _, r := range value {
+				if r >= 'a' && r <= 'z' {
+					sets = append(sets, "a-z")
+					break
+				}
+			}
+			for _, r := range value {
+				if r >= '0' && r <= '9' {
+					sets = append(sets, "0-9")
+					break
+				}
+			}
+			hasSpecial := false
+			for _, r := range value {
+				if !((r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')) {
+					hasSpecial = true
+					break
+				}
+			}
+			if hasSpecial {
+				sets = append(sets, "symbols")
+			}
+
+			charsetStr := "-"
+			if len(sets) > 0 {
+				charsetStr = ""
+				for i, s := range sets {
+					if i > 0 {
+						charsetStr += " : "
+					}
+					charsetStr += s
+				}
+			}
+
+			lengthVal.Text = fmt.Sprintf("%d characters", len(value))
+			lengthVal.Refresh()
+			charsetVal.Text = charsetStr
+			charsetVal.Refresh()
+			entropyVal.Text = result.CrackTime
+			entropyVal.Refresh()
+			crackVal.Text = result.CrackTime
+			crackVal.Refresh()
+
+			kvTable = theme.KeyValueTable([]theme.KVItem{
+				{Key: "Length", Value: fmt.Sprintf("%d characters", len(value))},
+				{Key: "Character set", Value: charsetStr},
+				{Key: "Estimated entropy", Value: fmt.Sprintf("%.0f bits", result.Entropy)},
+				{Key: "Brute-force estimate", Value: result.CrackTime},
+			})
+
+			issuesBox.Objects = nil
+			if len(result.Issues) > 0 {
+				issuesBox.Objects = []fyne.CanvasObject{NewIssuesList(result.Issues)}
+			}
+			issuesBox.Refresh()
+
+			analysisContainer.Objects = []fyne.CanvasObject{
+				container.NewBorder(nil, nil, nil, strengthLabel, newMeter),
+				divider,
+				kvTable,
+				issuesBox,
+			}
 		}
-		issuesBox.Refresh()
+		analysisContainer.Refresh()
 	}
 
 	passwordInput.OnChanged = updateStrength
 	updateStrength(passwordInput.Text)
 
-	strengthSection := container.NewMax(
-		sectionBorder,
-		sectionBg,
-		container.NewPadded(container.NewVBox(
-			theme.CreateLabel("STRENGTH RESULT", 11, theme.ColorPurple, true),
-			widget.NewLabel(""),
-			container.NewHBox(bar, widget.NewLabel("  "), scoreValue),
-			widget.NewLabel(""),
-			crackValue,
-			widget.NewLabel(""),
-			issuesBox,
-		)),
+	inputCard := theme.CardWithHeader("INPUT", "Password to analyze", nil,
+		container.NewVBox(passwordInput),
 	)
 
-	formContent := container.NewVBox(
-		headerSection,
-		widget.NewLabel(""),
-		passwordLabel,
-		container.NewCenter(styledPasswordInput),
-		widget.NewLabel(""),
-		container.NewCenter(strengthSection),
-	)
+	analysisCard := theme.CardWithHeader("ANALYSIS", "Strength result", nil, analysisContainer)
 
-	formCard := container.NewStack(
-		container.NewCenter(checkerOuter),
-		container.NewCenter(checkerBorder),
-		container.NewCenter(checkerBg),
-		container.NewPadded(formContent),
-	)
-
-	mainContent := container.NewVBox(
-		widget.NewLabel(""),
-		container.NewCenter(formCard),
-	)
-
-	return container.NewPadded(container.NewVScroll(mainContent))
+	return container.NewVBox(header, inputCard, analysisCard)
 }
 
-// createSettingsView creates the settings view
+func (ns *NavigationState) createItemsView() fyne.CanvasObject {
+	addItemBtn := theme.CreatePrimaryButtonWithIcon("Add item", theme.IconPlus, func() {
+		ns.switchView(NavViewAddItem)
+	})
+
+	countLabel := canvas.NewText("Loading…", theme.ColorTextSecondary)
+	countLabel.TextSize = 13
+
+	// Track all decrypted cards for filtering
+	type cardEntry struct {
+		service  string
+		username string
+		card     fyne.CanvasObject
+	}
+	var allCards []cardEntry
+
+	itemsContainer := container.NewVBox()
+	loadingText := canvas.NewText("Loading vault items...", theme.ColorFg2)
+	loadingText.TextSize = 13
+	itemsContainer.Objects = []fyne.CanvasObject{container.NewCenter(loadingText)}
+
+	// Search bar
+	searchEntry := widget.NewEntry()
+	searchEntry.PlaceHolder = "Search items…"
+	searchEntry.OnChanged = func(query string) {
+		q := strings.ToLower(query)
+		var filtered []fyne.CanvasObject
+		for _, ce := range allCards {
+			if q == "" || strings.Contains(strings.ToLower(ce.service), q) || strings.Contains(strings.ToLower(ce.username), q) {
+				filtered = append(filtered, ce.card)
+			}
+		}
+		if len(filtered) == 0 && query != "" {
+			noMatch := canvas.NewText("No items match “"+query+"”", theme.ColorFg2)
+			noMatch.TextSize = 13
+			itemsContainer.Objects = []fyne.CanvasObject{container.NewCenter(noMatch)}
+		} else {
+			itemsContainer.Objects = filtered
+		}
+		itemsContainer.Refresh()
+	}
+
+	go func() {
+		ns.appState.Mu.Lock()
+		defer ns.appState.Mu.Unlock()
+
+		vaultFile := app.GetVaultPath(ns.appState.CurrentVault)
+		entries, err := app.ReadVault(vaultFile, ns.appState.MasterPassword)
+		if err != nil {
+			fyne.Do(func() {
+				errText := canvas.NewText("Failed to read vault: "+err.Error(), theme.ColorDanger)
+				errText.TextSize = 13
+				itemsContainer.Objects = []fyne.CanvasObject{errText}
+				itemsContainer.Refresh()
+				countLabel.Text = "Error"
+				countLabel.Refresh()
+			})
+			return
+		}
+
+		fyne.Do(func() {
+			if len(entries) == 0 {
+				// Rich empty state
+				vaultIco := canvas.NewImageFromResource(theme.IconVault)
+				vaultIco.SetMinSize(fyne.NewSize(40, 40))
+				emptyTitle := canvas.NewText("No items yet", theme.ColorTextPrimary)
+				emptyTitle.TextSize = 15
+				emptyTitle.TextStyle = fyne.TextStyle{Bold: true}
+				emptySubtitle := canvas.NewText("Add your first credential to this vault.", theme.ColorFg2)
+				emptySubtitle.TextSize = 12
+				addFirstBtn := theme.CreatePrimaryButton("Add item", func() {
+					ns.switchView(NavViewAddItem)
+				})
+				emptyState := container.NewCenter(container.NewVBox(
+					container.NewCenter(vaultIco),
+					container.NewCenter(emptyTitle),
+					container.NewCenter(emptySubtitle),
+					container.NewCenter(addFirstBtn),
+				))
+				itemsContainer.Objects = []fyne.CanvasObject{emptyState}
+				itemsContainer.Refresh()
+				countLabel.Text = "No items"
+				countLabel.Refresh()
+				return
+			}
+
+			allCards = nil
+			var cards []fyne.CanvasObject
+			for _, entry := range entries {
+				ss, err := app.Decapsulate(entry.KyberCiphertext, ns.appState.PrivateKey)
+				if err != nil {
+					continue
+				}
+				plaintext, err := app.DecryptAES256GCM(entry.Nonce, entry.Ciphertext, ss)
+				if err != nil {
+					continue
+				}
+				card := createVaultItemCard(0, entry, plaintext, ns.window, ns.app, ns.appState)
+				allCards = append(allCards, cardEntry{
+					service:  entry.Service,
+					username: entry.Username,
+					card:     card,
+				})
+				cards = append(cards, card)
+			}
+
+			itemsContainer.Objects = cards
+			itemsContainer.Refresh()
+
+			n := len(allCards)
+			if n == 1 {
+				countLabel.Text = "1 item"
+			} else {
+				countLabel.Text = fmt.Sprintf("%d items", n)
+			}
+			countLabel.Refresh()
+		})
+	}()
+
+	// Build header manually to include a live countLabel
+	eyebrow := canvas.NewText("PASSQUANTUM / "+ns.appState.CurrentVault, theme.ColorFg2)
+	eyebrow.TextSize = 10
+	eyebrow.TextStyle = fyne.TextStyle{Monospace: true}
+	headerTitle := canvas.NewText("Vault items", theme.ColorTextPrimary)
+	headerTitle.TextSize = 22
+	headerTitle.TextStyle = fyne.TextStyle{Bold: true}
+	headerLeft := container.NewVBox(eyebrow, headerTitle, countLabel)
+	headerRow := container.NewBorder(nil, nil, headerLeft, addItemBtn)
+	headerDivider := canvas.NewRectangle(theme.ColorLine1)
+	headerDivider.SetMinSize(fyne.NewSize(0, 1))
+	header := container.NewVBox(
+		container.New(layout.NewCustomPaddedLayout(0, theme.Space4, 0, 0), headerRow),
+		headerDivider,
+	)
+
+	searchBg := canvas.NewRectangle(theme.ColorSidebarBg)
+	searchBg.CornerRadius = theme.RadiusInput
+	searchBorder := canvas.NewRectangle(color.Transparent)
+	searchBorder.CornerRadius = theme.RadiusInput
+	searchBorder.StrokeWidth = 1
+	searchBorder.StrokeColor = theme.ColorLine2
+	searchBorder.FillColor = color.Transparent
+	searchRow := container.NewStack(searchBg, searchBorder, container.NewPadded(searchEntry))
+
+	return container.NewVBox(header, searchRow, itemsContainer)
+}
+
 func (ns *NavigationState) createSettingsView() fyne.CanvasObject {
 	return buildCustomSettingsView(ns.window, ns.app, ns.appState)
 }
@@ -904,10 +1136,9 @@ func showSaveGeneratedPasswordDialog(w fyne.Window, fyneApp fyne.App, appState *
 	usernameInput := widget.NewEntry()
 	usernameInput.PlaceHolder = "Username or email"
 
-	// Create styled labels
-	vaultLabel := theme.CreateLabel("Vault", 11, theme.ColorAccentCyan, false)
-	serviceLabel := theme.CreateLabel("Service", 11, theme.ColorAccentCyan, false)
-	usernameLabel := theme.CreateLabel("Username", 11, theme.ColorAccentCyan, false)
+	vaultLabel := theme.SectionEyebrow("VAULT")
+	serviceLabel := theme.SectionEyebrow("SERVICE")
+	usernameLabel := theme.SectionEyebrow("USERNAME")
 
 	// Create styled containers for inputs
 	vaultSelectBg := canvas.NewRectangle(theme.ColorInputBg)
@@ -925,27 +1156,19 @@ func showSaveGeneratedPasswordDialog(w fyne.Window, fyneApp fyne.App, appState *
 	usernameInputBg.CornerRadius = theme.BorderRadius
 	styledUsernameInput := container.NewStack(usernameInputBg, container.NewPadded(usernameInput))
 
-	// Dialog content
-	headerLabel := theme.CreateLabel("ADD GENERATED PASSWORD", 13, theme.ColorAccentCyan, true)
-
 	formContent := container.NewVBox(
-		headerLabel,
-		theme.CreateDivider(),
-		widget.NewLabel(""),
+		theme.SectionEyebrow("SAVE TO VAULT"),
 		vaultLabel,
 		styledVaultSelect,
-		widget.NewLabel(""),
 		serviceLabel,
 		styledServiceInput,
-		widget.NewLabel(""),
 		usernameLabel,
 		styledUsernameInput,
 	)
 
 	var customDialog *dialog.CustomDialog
 
-	// Save button
-	saveBtn := theme.CreateNeonButton("✓ SAVE", func() {
+	saveBtn := theme.CreatePrimaryButton("Save entry", func() {
 		selectedVault := vaultSelect.Selected
 		service := serviceInput.Text
 		username := usernameInput.Text
@@ -1022,17 +1245,17 @@ func showSaveGeneratedPasswordDialog(w fyne.Window, fyneApp fyne.App, appState *
 		}); err != nil {
 			widgets.ShowAppError(err, w)
 		}
-	}, 120, 44)
+	})
 
-	cancelBtn := theme.CreateNeonButton("✕ CANCEL", func() {
+	cancelBtn := theme.CreateGhostButton("Cancel", func() {
 		if customDialog != nil {
 			customDialog.Hide()
 		}
-	}, 120, 44)
+	})
 
 	buttonBox := container.NewHBox(cancelBtn, saveBtn)
 
-	dialogContent := container.NewVBox(formContent, widget.NewLabel(""), container.NewCenter(buttonBox))
-	customDialog = dialog.NewCustom("Add Generated Password", "Close", dialogContent, w)
+	dialogContent := container.NewVBox(formContent, container.NewCenter(buttonBox))
+	customDialog = dialog.NewCustomWithoutButtons("Save to Vault", dialogContent, w)
 	customDialog.Show()
 }

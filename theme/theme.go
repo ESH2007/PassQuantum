@@ -13,38 +13,68 @@ import (
 )
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// EXACT COLOR PALETTE FROM REFERENCE IMAGES
+// DESIGN SYSTEM TOKENS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var (
-	// Background colors - Dark theme
-	ColorBg        = color.NRGBA{R: 11, G: 15, B: 20, A: 255} // #0b0f14 - Main background
-	ColorSidebarBg = color.NRGBA{R: 20, G: 25, B: 32, A: 255} // #141920 - Sidebar background
-	ColorCardBg    = color.NRGBA{R: 26, G: 31, B: 40, A: 255} // #1a1f28 - Card background
-	ColorInputBg   = color.NRGBA{R: 30, G: 40, B: 50, A: 255} // #1e2832 - Input fields
+	// Surfaces
+	ColorBg        = color.NRGBA{R: 0x0b, G: 0x0e, B: 0x13, A: 255} // bg0 — page background
+	ColorSidebarBg = color.NRGBA{R: 0x0f, G: 0x13, B: 0x19, A: 255} // bg1 — sidebar, inputs
+	ColorCardBg    = color.NRGBA{R: 0x13, G: 0x18, B: 0x22, A: 255} // bg2 — card surface
+	ColorInputBg   = color.NRGBA{R: 0x0f, G: 0x13, B: 0x19, A: 255} // bg1 — input fields
+	ColorBg3       = color.NRGBA{R: 0x1a, G: 0x20, B: 0x30, A: 255} // bg3 — hover/selected
+	ColorBg4       = color.NRGBA{R: 0x23, G: 0x2a, B: 0x3a, A: 255} // bg4 — pressed
 
-	// Accent colors - Cyan and Magenta
-	ColorAccentCyan = color.NRGBA{R: 34, G: 211, B: 238, A: 255} // #22d3ee - Primary cyan
-	ColorAccentPink = color.NRGBA{R: 236, G: 72, B: 153, A: 255} // #ec4899 - Magenta/Pink
-	ColorPurple     = color.NRGBA{R: 168, G: 85, B: 247, A: 200} // #a855f7 - Purple accent
+	// Accent — institutional blue
+	ColorAccentCyan = color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 255} // accent #3b82f6
+	ColorAccentPink = color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 255} // mapped to accent (pink removed)
+	ColorPurple     = color.NRGBA{R: 0x7a, G: 0x82, B: 0x94, A: 255} // fg2 — tertiary label
+	ColorAccentSoft = color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 0x24} // 14% alpha
+	ColorAccentLine = color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 0x66} // 40% alpha
 
 	// Action roles
 	ColorPrimaryButton   = ColorAccentCyan
-	ColorSecondaryButton = ColorAccentPink
+	ColorSecondaryButton = ColorBg3
 
-	// Text colors
-	ColorTextPrimary   = color.NRGBA{R: 255, G: 255, B: 255, A: 255} // White
-	ColorTextSecondary = color.NRGBA{R: 148, G: 163, B: 184, A: 255} // #94a3b8 - Gray
+	// Text
+	ColorTextPrimary   = color.NRGBA{R: 0xe7, G: 0xea, B: 0xf0, A: 255} // fg0
+	ColorTextSecondary = color.NRGBA{R: 0xb3, G: 0xba, B: 0xc8, A: 255} // fg1
+	ColorFg2           = color.NRGBA{R: 0x7a, G: 0x82, B: 0x94, A: 255} // fg2 — tertiary
+	ColorFg3           = color.NRGBA{R: 0x55, G: 0x5c, B: 0x6c, A: 255} // fg3 — placeholder
 
-	// Border and glow
-	ColorBorderCyan = color.NRGBA{R: 34, G: 211, B: 238, A: 180} // Cyan with alpha
-	ColorGlowCyan   = color.NRGBA{R: 34, G: 211, B: 238, A: 80}  // Subtle cyan glow
+	// Borders
+	ColorLine1      = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x0f} // hairlines (6%)
+	ColorLine2      = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x1a} // dividers (10%)
+	ColorLine3      = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x29} // emphasized (16%)
+	ColorBorderCyan = ColorLine2
+	ColorGlowCyan   = ColorAccentSoft
 
-	// Status colors
-	ColorDanger  = color.NRGBA{R: 239, G: 68, B: 68, A: 220}  // #ef4444 - Red
-	ColorWarning = color.NRGBA{R: 250, G: 204, B: 21, A: 220} // #facc15 - Yellow
-	ColorSuccess = color.NRGBA{R: 34, G: 197, B: 94, A: 255}  // #22c55e - Green
+	// Status
+	ColorDanger  = color.NRGBA{R: 0xd0, G: 0x4a, B: 0x4a, A: 255} // #d04a4a
+	ColorWarning = color.NRGBA{R: 0xd9, G: 0x90, B: 0x30, A: 255} // #d99030
+	ColorSuccess = color.NRGBA{R: 0x2e, G: 0xa9, B: 0x6b, A: 255} // #2ea96b
 
-	// Backward compatibility aliases
+	// Strength meter scale
+	ColorStr1 = color.NRGBA{R: 0xd0, G: 0x4a, B: 0x4a, A: 255} // very weak
+	ColorStr2 = color.NRGBA{R: 0xd9, G: 0x7a, B: 0x3a, A: 255} // weak
+	ColorStr3 = color.NRGBA{R: 0xd9, G: 0xb7, B: 0x3a, A: 255} // fair
+	ColorStr4 = color.NRGBA{R: 0x6f, G: 0xb7, B: 0x3a, A: 255} // strong
+	ColorStr5 = color.NRGBA{R: 0x2e, G: 0xa9, B: 0x6b, A: 255} // excellent
+
+	// Soft semantic (for pill/banner backgrounds)
+	ColorOkSoft     = color.NRGBA{R: 0x2e, G: 0xa9, B: 0x6b, A: 0x24} // 14%
+	ColorWarnSoft   = color.NRGBA{R: 0xd9, G: 0x90, B: 0x30, A: 0x1a} // 10%
+	ColorDangerSoft = color.NRGBA{R: 0xd0, G: 0x4a, B: 0x4a, A: 0x24} // 14%
+	ColorOkLine     = color.NRGBA{R: 0x2e, G: 0xa9, B: 0x6b, A: 0x59} // 35%
+	ColorWarnLine   = color.NRGBA{R: 0xd9, G: 0x90, B: 0x30, A: 0x4d} // 30%
+	ColorDangerLine = color.NRGBA{R: 0xd0, G: 0x4a, B: 0x4a, A: 0x59} // 35%
+
+	// Pill text colors
+	ColorAccentPillFg = color.NRGBA{R: 0xc9, G: 0xdc, B: 0xfb, A: 255}
+	ColorOkPillFg     = color.NRGBA{R: 0xb6, G: 0xe7, B: 0xcb, A: 255}
+	ColorWarnPillFg   = color.NRGBA{R: 0xf0, G: 0xd4, B: 0xa2, A: 255}
+	ColorDangerPillFg = color.NRGBA{R: 0xf3, G: 0xa8, B: 0xa8, A: 255}
+
+	// Backward-compatibility aliases
 	ColorAccentCyn = ColorAccentCyan
 	ColorTextSec   = ColorTextSecondary
 	ColorTextPrim  = ColorTextPrimary
@@ -55,11 +85,34 @@ var (
 // Sizing constants
 const (
 	BorderWidth  = 1
-	BorderRadius = 8
-	SidebarWidth = 175
+	BorderRadius = 10 // radius3 — cards (most common usage)
+	RadiusSmall  = 4  // radius1 — checkboxes, pills
+	RadiusInput  = 6  // radius2 — inputs, buttons
+	RadiusCard   = 10 // radius3 — cards
+	RadiusModal  = 14 // radius4 — modals
+	RadiusPill   = 999
+
+	SidebarWidth          float32 = 224
+	SidebarCollapsedWidth float32 = 64
+	TopbarHeight          float32 = 48
+	ContentMaxWidth       float32 = 960
+
 	PaddingLarge = 24
 	PaddingMed   = 16
 	PaddingSmall = 8
+)
+
+// 4px base grid spacing
+const (
+	Space1 float32 = 4
+	Space2 float32 = 8
+	Space3 float32 = 12
+	Space4 float32 = 16
+	Space5 float32 = 20
+	Space6 float32 = 24
+	Space7 float32 = 32
+	Space8 float32 = 40
+	Space9 float32 = 56
 )
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -202,14 +255,11 @@ func (r *particleRenderer) Objects() []fyne.CanvasObject {
 		// Alternate colors for variety
 		var particleColor color.NRGBA
 		if i%3 == 0 {
-			// Cyan particles
-			particleColor = color.NRGBA{R: 34, G: 211, B: 238, A: currentOpacity}
+			particleColor = color.NRGBA{R: ColorAccentCyan.R, G: ColorAccentCyan.G, B: ColorAccentCyan.B, A: currentOpacity}
 		} else if i%3 == 1 {
-			// Purple particles
-			particleColor = color.NRGBA{R: 168, G: 85, B: 247, A: currentOpacity}
+			particleColor = color.NRGBA{R: ColorFg2.R, G: ColorFg2.G, B: ColorFg2.B, A: currentOpacity}
 		} else {
-			// Pink particles
-			particleColor = color.NRGBA{R: 236, G: 72, B: 153, A: currentOpacity}
+			particleColor = color.NRGBA{R: ColorAccentCyan.R, G: ColorAccentCyan.G, B: ColorAccentCyan.B, A: currentOpacity}
 		}
 
 		circle := canvas.NewCircle(particleColor)
@@ -235,7 +285,7 @@ type clickOverlay struct {
 	onTap func()
 }
 
-func newClickOverlay(onTap func()) *clickOverlay {
+func NewClickOverlay(onTap func()) *clickOverlay {
 	o := &clickOverlay{onTap: onTap}
 	o.ExtendBaseWidget(o)
 	return o
@@ -277,15 +327,15 @@ func CreateSecondaryButton(label string, onClick func(), width, height float32) 
 }
 
 func createColorRoleButton(label string, onClick func(), width, height float32, roleColor color.NRGBA) fyne.CanvasObject {
-	btn := newClickOverlay(onClick)
+	btn := NewClickOverlay(onClick)
 	btn.Resize(fyne.NewSize(width, height))
 
 	bg := canvas.NewRectangle(roleColor)
-	bg.CornerRadius = 6
+	bg.CornerRadius = RadiusInput
 	bg.SetMinSize(fyne.NewSize(width, height))
 
-	border := canvas.NewRectangle(color.NRGBA{R: roleColor.R, G: roleColor.G, B: roleColor.B, A: 210})
-	border.CornerRadius = 6
+	border := canvas.NewRectangle(color.NRGBA{R: roleColor.R, G: roleColor.G, B: roleColor.B, A: 0x66})
+	border.CornerRadius = RadiusInput
 	border.SetMinSize(fyne.NewSize(width+2, height+2))
 
 	textColor := readableTextColor(roleColor)
@@ -351,26 +401,25 @@ func CreateOutlinedButton(label string, onClick func(), btnColor color.Color) fy
 	border.StrokeWidth = 1
 	border.StrokeColor = btnColor
 	border.FillColor = color.Transparent
-	border.CornerRadius = 4
+	border.CornerRadius = RadiusSmall
 	border.SetMinSize(fyne.NewSize(50, 28))
 
 	return container.NewStack(border, btn)
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// UI COMPONENTS FROM REFERENCE IMAGES
+// UI COMPONENTS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-// CreateCard creates a card matching the reference design
 func CreateCard(content fyne.CanvasObject, width, height float32, hasBorder bool) fyne.CanvasObject {
 	bg := canvas.NewRectangle(ColorCardBg)
 	bg.SetMinSize(fyne.NewSize(width, height))
-	bg.CornerRadius = BorderRadius
+	bg.CornerRadius = RadiusCard
 
 	if hasBorder {
-		border := canvas.NewRectangle(ColorBorderCyan)
+		border := canvas.NewRectangle(ColorLine1)
 		border.SetMinSize(fyne.NewSize(width, height))
-		border.CornerRadius = BorderRadius
+		border.CornerRadius = RadiusCard
 		return container.NewMax(border, bg, container.NewPadded(content))
 	}
 
@@ -381,11 +430,11 @@ func CreateCard(content fyne.CanvasObject, width, height float32, hasBorder bool
 func CreateCardWithBorderColor(content fyne.CanvasObject, width, height float32, borderColor color.Color) fyne.CanvasObject {
 	bg := canvas.NewRectangle(ColorCardBg)
 	bg.SetMinSize(fyne.NewSize(width, height))
-	bg.CornerRadius = BorderRadius
+	bg.CornerRadius = RadiusCard
 
 	border := canvas.NewRectangle(borderColor)
 	border.SetMinSize(fyne.NewSize(width, height))
-	border.CornerRadius = BorderRadius
+	border.CornerRadius = RadiusCard
 
 	return container.NewMax(border, bg, container.NewPadded(content))
 }
@@ -409,11 +458,7 @@ func CreateDivider() fyne.CanvasObject {
 func CreateBackgroundContainer(content fyne.CanvasObject) fyne.CanvasObject {
 	bg := canvas.NewRectangle(ColorBg)
 	bg.SetMinSize(fyne.NewSize(1200, 800))
-
-	// Add particle background
-	particles := NewParticleBackground(50)
-
-	return container.NewStack(bg, particles, content)
+	return container.NewStack(bg, content)
 }
 
 // CreateSearchBar creates a search input matching reference design
@@ -439,8 +484,8 @@ func CreateSidebarButton(label string, onClick func(), isActive bool) fyne.Canva
 	// Add subtle background for active state
 	var bg fyne.CanvasObject
 	if isActive {
-		bgRect := canvas.NewRectangle(color.NRGBA{R: 34, G: 211, B: 238, A: 20})
-		bgRect.CornerRadius = 4
+		bgRect := canvas.NewRectangle(ColorAccentSoft)
+		bgRect.CornerRadius = RadiusSmall
 		bg = bgRect
 	} else {
 		bg = canvas.NewRectangle(color.Transparent)
@@ -459,10 +504,10 @@ func CreateNavButton(icon, label string, onClick func(), isActive bool) fyne.Can
 	if isActive {
 		textColor = ColorTextPrimary
 		iconColor = ColorAccentCyan
-		bgColor = color.NRGBA{R: 34, G: 211, B: 238, A: 30}
+		bgColor = ColorAccentSoft
 	} else {
 		textColor = ColorTextSecondary
-		iconColor = ColorTextSecondary
+		iconColor = ColorFg2
 		bgColor = color.Transparent
 	}
 
@@ -471,7 +516,7 @@ func CreateNavButton(icon, label string, onClick func(), isActive bool) fyne.Can
 
 	content := container.NewHBox(
 		iconLabel,
-		widget.NewLabel("  "), // Spacing
+		widget.NewLabel("  "),
 		textLabel,
 	)
 
@@ -479,7 +524,7 @@ func CreateNavButton(icon, label string, onClick func(), isActive bool) fyne.Can
 	btn.Importance = widget.LowImportance
 
 	bg := canvas.NewRectangle(bgColor)
-	bg.CornerRadius = 6
+	bg.CornerRadius = RadiusInput
 
 	padded := container.NewPadded(content)
 
@@ -577,9 +622,9 @@ func CreatePasswordItem(service, username, password string, onView, onEdit, onCo
 
 	// Wrap in card with border
 	bg := canvas.NewRectangle(ColorCardBg)
-	bg.CornerRadius = BorderRadius
-	border := canvas.NewRectangle(ColorBorderCyan)
-	border.CornerRadius = BorderRadius
+	bg.CornerRadius = RadiusCard
+	border := canvas.NewRectangle(ColorLine1)
+	border.CornerRadius = RadiusCard
 	border.StrokeWidth = 1
 
 	return container.NewStack(bg, container.NewPadded(content))
@@ -626,22 +671,22 @@ func CreateTabButton(label string, isActive bool, onClick func()) fyne.CanvasObj
 
 	if isActive {
 		bgColor = ColorCardBg
-		textColor = readableTextColor(bgColor)
-		borderColor = ColorPrimaryButton
+		textColor = ColorTextPrimary
+		borderColor = ColorAccentCyan
 	} else {
 		bgColor = color.NRGBA{R: ColorBg.R, G: ColorBg.G, B: ColorBg.B, A: 50}
-		textColor = readableTextColor(bgColor)
+		textColor = ColorFg2
 		borderColor = color.Transparent
 	}
 
 	text := CreateLabel(label, 11, textColor, false)
-	btn := newClickOverlay(onClick)
+	btn := NewClickOverlay(onClick)
 
 	bg := canvas.NewRectangle(bgColor)
-	bg.CornerRadius = 4
+	bg.CornerRadius = RadiusSmall
 
 	border := canvas.NewRectangle(borderColor)
-	border.CornerRadius = 4
+	border.CornerRadius = RadiusSmall
 
 	content := container.NewCenter(text)
 	return container.NewStack(border, bg, btn, content)

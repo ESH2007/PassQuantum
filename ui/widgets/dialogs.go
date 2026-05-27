@@ -67,19 +67,25 @@ func showAppDialog(w fyne.Window, title, message, glyph string, tone color.NRGBA
 		return
 	}
 
-	titleLabel := theme.CreateLabel(title, 16, theme.ColorTextPrimary, true)
+	titleTxt := canvas.NewText(title, theme.ColorTextPrimary)
+	titleTxt.TextSize = 15
+	titleTxt.TextStyle = fyne.TextStyle{Bold: true}
+
 	messageLabel := widget.NewLabel(message)
 	messageLabel.Wrapping = fyne.TextWrapWord
 
-	iconCircle := canvas.NewCircle(color.NRGBA{R: tone.R, G: tone.G, B: tone.B, A: 35})
-	iconSymbol := theme.CreateLabel(glyph, 44, color.NRGBA{R: tone.R, G: tone.G, B: tone.B, A: 170}, true)
-	iconStack := container.NewGridWrap(fyne.NewSize(90, 90), container.NewStack(iconCircle, container.NewCenter(iconSymbol)))
+	iconCircle := canvas.NewCircle(color.NRGBA{R: tone.R, G: tone.G, B: tone.B, A: 0x24})
+	iconCircle.StrokeWidth = 1
+	iconCircle.StrokeColor = color.NRGBA{R: tone.R, G: tone.G, B: tone.B, A: 0x66}
+	glyphTxt := canvas.NewText(glyph, color.NRGBA{R: tone.R, G: tone.G, B: tone.B, A: 0xcc})
+	glyphTxt.TextSize = 36
+	glyphTxt.TextStyle = fyne.TextStyle{Bold: true}
+	iconStack := container.NewGridWrap(fyne.NewSize(145, 72), container.NewStack(iconCircle, container.NewCenter(glyphTxt)))
 
 	var d dialog.Dialog
 	buttons := make([]fyne.CanvasObject, 0, len(actions))
 	for _, action := range actions {
 		a := action
-		var btn fyne.CanvasObject
 		onTap := func() {
 			if a.onTap != nil {
 				a.onTap()
@@ -88,27 +94,29 @@ func showAppDialog(w fyne.Window, title, message, glyph string, tone color.NRGBA
 				d.Hide()
 			}
 		}
+		var btn fyne.CanvasObject
 		if a.primary {
-			btn = theme.CreateNeonButton(a.label, onTap, 95, 38)
+			btn = theme.CreatePrimaryButton(a.label, onTap)
 		} else {
-			btn = theme.CreateSecondaryButton(a.label, onTap, 95, 38)
+			btn = theme.CreateGhostButton(a.label, onTap)
 		}
 		buttons = append(buttons, btn)
 	}
 
 	buttonBar := container.NewCenter(container.NewHBox(buttons...))
 
+	divider := canvas.NewRectangle(theme.ColorLine1)
+	divider.SetMinSize(fyne.NewSize(0, 1))
+
 	content := container.NewVBox(
-		titleLabel,
-		widget.NewLabel(""),
 		container.NewCenter(iconStack),
-		widget.NewLabel(""),
+		container.NewCenter(titleTxt),
 		messageLabel,
-		widget.NewLabel(""),
+		divider,
 		buttonBar,
 	)
 
-	card := theme.CreateCard(content, 440, 0, true)
+	card := theme.CardWithHeader("", "", nil, content)
 	d = dialog.NewCustomWithoutButtons("", container.NewPadded(card), w)
 	d.Show()
 }

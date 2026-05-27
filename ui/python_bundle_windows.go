@@ -40,6 +40,11 @@ func init() {
 		return
 	}
 
+	if info, err := os.Stat(bundlePath); err != nil || info.Size() != int64(len(faceGuardBundleData)) {
+		log.Printf("[FaceGuard] WARNING: extracted bundle size mismatch (expected %d bytes)", len(faceGuardBundleData))
+		return
+	}
+
 	os.Setenv("PASSQUANTUM_FACE_GUARD_BUNDLE", bundlePath)
 
 	log.Printf("[FaceGuard] Embedded Python bundle extracted to %s", bundlePath)

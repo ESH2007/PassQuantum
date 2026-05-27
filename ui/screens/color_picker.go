@@ -555,7 +555,7 @@ func ShowColorPersonalizationDialog(w fyne.Window, fyneApp fyne.App, appState *a
 
 	var d dialog.Dialog
 
-	applyBtn := theme.CreateNeonButton("APPLY COLORS", func() {
+	applyBtn := theme.CreatePrimaryButton("Apply colors", func() {
 		palette := []color.NRGBA{bgSt.current(), primarySt.current(), secondSt.current()}
 		fyneApp.Settings().SetTheme(fynetheme.DefaultTheme())
 		applyExtractedPalette(palette)
@@ -570,16 +570,16 @@ func ShowColorPersonalizationDialog(w fyne.Window, fyneApp fyne.App, appState *a
 				toHex(palette[0]), toHex(palette[1]), toHex(palette[2])),
 			w,
 		)
-	}, 180, 40)
+	})
 
-	cancelBtn := theme.CreateSecondaryButton("CANCEL", func() {
+	cancelBtn := theme.CreateGhostButton("Cancel", func() {
 		if d != nil {
 			d.Hide()
 		}
-	}, 120, 40)
+	})
 
-	titleLabel := theme.CreateLabel("MANUAL COLOR PERSONALIZATION", 14, theme.ColorAccentCyan, true)
-	divider := canvas.NewRectangle(theme.ColorBorderCyan)
+	titleLabel := theme.SectionEyebrow("MANUAL COLOR PERSONALIZATION")
+	divider := canvas.NewRectangle(theme.ColorLine1)
 	divider.SetMinSize(fyne.NewSize(560, 1))
 
 	body := container.NewVBox(

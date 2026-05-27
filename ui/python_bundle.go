@@ -39,6 +39,11 @@ func init() {
 		return
 	}
 
+	if info, err := os.Stat(bundlePath); err != nil || info.Size() != int64(len(faceGuardBundleData)) {
+		log.Printf("[FaceGuard] WARNING: extracted bundle size mismatch (expected %d bytes)", len(faceGuardBundleData))
+		return
+	}
+
 	// Expose the bundle path so buildPythonCommand can find it.
 	os.Setenv("PASSQUANTUM_FACE_GUARD_BUNDLE", bundlePath)
 

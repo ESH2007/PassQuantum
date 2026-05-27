@@ -19,8 +19,8 @@ type ThemePalette struct {
 
 func BuildThemePalette(clusters []ColorCluster) ThemePalette {
 	if len(clusters) == 0 {
-		fallback := color.RGBA{R: 11, G: 15, B: 20, A: 255}
-		primary := color.RGBA{R: 34, G: 211, B: 238, A: 255}
+		fallback := color.RGBA{R: 0x0b, G: 0x0e, B: 0x13, A: 255}
+		primary := color.RGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 255}
 		return ThemePalette{
 			Background:    fallback,
 			Surface:       Lighten(fallback, 0.08),

@@ -36,7 +36,7 @@ type StrengthBarWidget struct {
 
 // NewStrengthBar creates a reusable live password strength widget.
 func NewStrengthBar() fyne.CanvasObject {
-	track := canvas.NewRectangle(color.NRGBA{R: 31, G: 41, B: 55, A: 255})
+	track := canvas.NewRectangle(theme.ColorBg3)
 	track.Resize(fyne.NewSize(strengthBarWidth, strengthBarHeight))
 	track.CornerRadius = 6
 
@@ -137,10 +137,10 @@ func NewEasterEggPanel(rules []strength.EasterEggRule) fyne.CanvasObject {
 
 	items := []fyne.CanvasObject{intro, widget.NewLabel("")}
 	for _, rule := range rules {
-		rowColor := color.NRGBA{R: 226, G: 75, B: 74, A: 255}
+		rowColor := color.NRGBA(theme.ColorDanger)
 		prefix := "❌ "
 		if rule.Satisfied {
-			rowColor = color.NRGBA{R: 29, G: 158, B: 117, A: 255}
+			rowColor = color.NRGBA(theme.ColorSuccess)
 			prefix = "✅ "
 		}
 		row := canvas.NewText(prefix+rule.Description, rowColor)
@@ -157,7 +157,7 @@ func (sb *StrengthBarWidget) apply(result strength.AnalysisResult) {
 	if result.EasterEggMode {
 		sb.normalContainer.Hide()
 		satisfied := countSatisfied(result.EasterEggRules)
-		bg := canvas.NewRectangle(color.NRGBA{R: 83, G: 74, B: 183, A: 30})
+		bg := canvas.NewRectangle(theme.ColorAccentSoft)
 		bg.CornerRadius = theme.BorderRadius
 		panel := NewEasterEggPanel(result.EasterEggRules)
 		sb.easterContainer.Objects = []fyne.CanvasObject{container.NewStack(bg, container.NewPadded(panel))}
@@ -206,15 +206,15 @@ func newStrengthText(value string, clr color.Color, size float32, bold bool) *ca
 func scoreColor(score strength.Score) color.NRGBA {
 	switch score {
 	case strength.ScoreVeryStrong:
-		return color.NRGBA{R: 0x53, G: 0x4A, B: 0xB7, A: 255}
+		return theme.ColorStr5
 	case strength.ScoreStrong:
-		return color.NRGBA{R: 0x1D, G: 0x9E, B: 0x75, A: 255}
+		return theme.ColorStr4
 	case strength.ScoreFair:
-		return color.NRGBA{R: 0x97, G: 0xC4, B: 0x59, A: 255}
+		return theme.ColorStr3
 	case strength.ScoreWeak:
-		return color.NRGBA{R: 0xEF, G: 0x9F, B: 0x27, A: 255}
+		return theme.ColorStr2
 	default:
-		return color.NRGBA{R: 0xE2, G: 0x4B, B: 0x4A, A: 255}
+		return theme.ColorStr1
 	}
 }
 
@@ -249,9 +249,12 @@ func storedVaultPasswords(appState *app.AppState) []string {
 	}
 
 	appState.Mu.Lock()
-	defer appState.Mu.Unlock()
+	vaultPath := app.GetVaultPath(appState.CurrentVault)
+	masterPw := appState.MasterPassword
+	privKey := appState.PrivateKey
+	appState.Mu.Unlock()
 
-	entries, err := app.ReadVault(app.GetVaultPath(appState.CurrentVault), appState.MasterPassword)
+	entries, err := app.ReadVault(vaultPath, masterPw)
 	if err != nil {
 		return nil
 	}
@@ -261,7 +264,7 @@ func storedVaultPasswords(appState *app.AppState) []string {
 		if entry.Type != model.EntryTypePassword {
 			continue
 		}
-		sharedSecret, err := app.Decapsulate(entry.KyberCiphertext, appState.PrivateKey)
+		sharedSecret, err := app.Decapsulate(entry.KyberCiphertext, privKey)
 		if err != nil {
 			continue
 		}

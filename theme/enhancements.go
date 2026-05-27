@@ -17,28 +17,16 @@ import (
 
 // CreateEnhancedCard creates a card with animated border glow
 func CreateEnhancedCard(content fyne.CanvasObject, width, height float32) fyne.CanvasObject {
-	// Background
 	bg := canvas.NewRectangle(ColorCardBg)
 	bg.SetMinSize(fyne.NewSize(width, height))
-	bg.CornerRadius = BorderRadius
+	bg.CornerRadius = RadiusCard
 
-	// Animated border glow
-	borderGlow := canvas.NewRectangle(ColorBorderCyan)
-	borderGlow.SetMinSize(fyne.NewSize(width+2, height+2))
-	borderGlow.CornerRadius = BorderRadius
-
-	// Outer subtle glow
-	outerGlow := canvas.NewRectangle(color.NRGBA{R: ColorBorderCyan.R, G: ColorBorderCyan.G, B: ColorBorderCyan.B, A: 20})
-	outerGlow.SetMinSize(fyne.NewSize(width+6, height+6))
-	outerGlow.CornerRadius = BorderRadius + 2
-
-	// Keep static glow to avoid cross-thread refresh warnings in older Fyne runtimes.
-	borderGlow.FillColor = color.NRGBA{R: ColorBorderCyan.R, G: ColorBorderCyan.G, B: ColorBorderCyan.B, A: 120}
-	outerGlow.FillColor = color.NRGBA{R: ColorBorderCyan.R, G: ColorBorderCyan.G, B: ColorBorderCyan.B, A: 20}
+	border := canvas.NewRectangle(ColorLine2)
+	border.SetMinSize(fyne.NewSize(width+2, height+2))
+	border.CornerRadius = RadiusCard
 
 	return container.NewStack(
-		container.NewCenter(outerGlow),
-		container.NewCenter(borderGlow),
+		container.NewCenter(border),
 		container.NewCenter(bg),
 		container.NewPadded(content),
 	)
@@ -73,15 +61,13 @@ func animateCardGlow(border, outer *canvas.Rectangle) {
 
 // CreateStyledInput creates an input field with enhanced styling
 func CreateStyledInput(entry *widget.Entry, width, height float32) fyne.CanvasObject {
-	// Background with subtle gradient effect
 	bg := canvas.NewRectangle(ColorInputBg)
 	bg.SetMinSize(fyne.NewSize(width, height))
-	bg.CornerRadius = BorderRadius
+	bg.CornerRadius = RadiusInput
 
-	// Border
-	border := canvas.NewRectangle(color.NRGBA{R: 34, G: 211, B: 238, A: 80})
+	border := canvas.NewRectangle(ColorLine2)
 	border.SetMinSize(fyne.NewSize(width+2, height+2))
-	border.CornerRadius = BorderRadius
+	border.CornerRadius = RadiusInput
 
 	return container.NewStack(
 		container.NewCenter(border),
@@ -123,8 +109,7 @@ func CreateHeaderText(text string, size float32) fyne.CanvasObject {
 	mainText.TextSize = size
 	mainText.TextStyle = fyne.TextStyle{Bold: true}
 
-	// Shadow/glow layer
-	shadowText := canvas.NewText(text, color.NRGBA{R: 34, G: 211, B: 238, A: 60})
+	shadowText := canvas.NewText(text, ColorAccentSoft)
 	shadowText.TextSize = size
 	shadowText.TextStyle = fyne.TextStyle{Bold: true}
 
@@ -194,9 +179,8 @@ func CreateStatusIndicator(statusText string, statusType string) fyne.CanvasObje
 
 // CreateGlowingDivider creates an animated glowing divider
 func CreateGlowingDivider() fyne.CanvasObject {
-	line := canvas.NewRectangle(ColorBorderCyan)
-	line.SetMinSize(fyne.NewSize(500, 2))
-	line.FillColor = color.NRGBA{R: 34, G: 211, B: 238, A: 120}
+	line := canvas.NewRectangle(ColorAccentLine)
+	line.SetMinSize(fyne.NewSize(500, 1))
 
 	return line
 }
@@ -204,7 +188,7 @@ func CreateGlowingDivider() fyne.CanvasObject {
 // CreateToolbar creates a styled toolbar with action buttons
 func CreateToolbar(buttons []fyne.CanvasObject) fyne.CanvasObject {
 	bg := canvas.NewRectangle(ColorSidebarBg)
-	bg.CornerRadius = BorderRadius
+	bg.CornerRadius = RadiusCard
 	bg.SetMinSize(fyne.NewSize(800, 50))
 
 	buttonContainer := container.NewHBox(buttons...)

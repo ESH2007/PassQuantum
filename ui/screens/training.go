@@ -16,6 +16,8 @@ package screens
 import (
 	"fmt"
 	"image"
+	"log"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -39,7 +41,9 @@ func ShowTrainingScreen(w fyne.Window, guard *bridge.FaceGuard, appState *app.Ap
 	appState.IsTraining = true
 	appState.Mu.Unlock()
 	// ── Title ──────────────────────────────────────────────────────
-	title := theme.CreateLabel("FACIAL REGISTRATION", 18, theme.ColorAccentCyan, true)
+	title := canvas.NewText("FACIAL REGISTRATION", theme.ColorTextPrimary)
+	title.TextSize = 22
+	title.TextStyle = fyne.TextStyle{Bold: true}
 
 	// ── Camera preview ─────────────────────────────────────────────
 	// Starts with a blank image; updated on every FRAME message.
@@ -54,16 +58,16 @@ func ShowTrainingScreen(w fyne.Window, guard *bridge.FaceGuard, appState *app.Ap
 	progressBar.Min = 0
 
 	// ── Status label ───────────────────────────────────────────────
-	statusLabel := theme.CreateLabel("Press the button below to begin.", 12, theme.ColorTextPrimary, false)
+	statusLabel := canvas.NewText("Press the button below to begin.", theme.ColorTextSecondary)
+	statusLabel.TextSize = 13
 
 	// ── Start button ───────────────────────────────────────────────
-	startBtn := theme.CreateNeonButton("[ START REGISTRATION ]", nil, 280, 48)
-
-	// Re-create the button with a real tap handler (CreateNeonButton requires
-	// the handler at construction time, so we rebuild it once we have all refs).
-	startBtn = theme.CreateNeonButton("[ START REGISTRATION ]", func() {
-		// Disable the button immediately so it cannot be tapped twice.
-		disableNeonButton(startBtn)
+	var started bool
+	startBtn := theme.CreatePrimaryButton("Start registration", func() {
+		if started {
+			return
+		}
+		started = true
 
 		// Wire callbacks before sending START_TRAINING so no messages are missed.
 		// All three callbacks are invoked from the Listen() goroutine, so every
@@ -82,7 +86,9 @@ func ShowTrainingScreen(w fyne.Window, guard *bridge.FaceGuard, appState *app.Ap
 			})
 		}
 
+		trainingDone := make(chan struct{})
 		guard.OnDone = func() {
+			close(trainingDone)
 			// SendCommand is safe to call here — Python is already connected
 			// (it just sent TRAINING_DONE), so this write is non-blocking.
 			guard.SendCommand("START_MONITOR")
@@ -102,7 +108,23 @@ func ShowTrainingScreen(w fyne.Window, guard *bridge.FaceGuard, appState *app.Ap
 		// take several seconds while face_recognition imports.  Blocking here
 		// would freeze the Fyne UI thread.
 		go guard.SendCommand("START_TRAINING")
-	}, 280, 48)
+
+		time.AfterFunc(2*time.Minute, func() {
+			select {
+			case <-trainingDone:
+				return
+			default:
+			}
+			log.Println("[FaceGuard] WARNING: training timed out after 2 minutes")
+			appState.Mu.Lock()
+			appState.IsTraining = false
+			appState.Mu.Unlock()
+			fyne.Do(func() {
+				started = false
+				updateCanvasText(statusLabel, "Training timed out. You can try again.")
+			})
+		})
+	})
 
 	// ── Layout ─────────────────────────────────────────────────────
 	content := container.NewVBox(
@@ -114,11 +136,10 @@ func ShowTrainingScreen(w fyne.Window, guard *bridge.FaceGuard, appState *app.Ap
 		container.NewCenter(startBtn),
 	)
 
-	card := theme.CreateCard(content, 480, 480, true)
+	card := theme.CardWithHeader("", "Facial Registration", nil, content)
 	screen := container.NewCenter(card)
 
 	w.SetContent(screen)
-	w.Resize(fyne.NewSize(640, 560))
 }
 
 // ==============================
@@ -134,20 +155,3 @@ func updateCanvasText(obj fyne.CanvasObject, text string) {
 	}
 }
 
-// disableNeonButton walks the CanvasObject returned by CreateNeonButton
-// (which is a container.Max wrapping a *widget.Button) and disables the button.
-func disableNeonButton(obj fyne.CanvasObject) {
-	type widgetDisabler interface {
-		Disable()
-	}
-	if d, ok := obj.(widgetDisabler); ok {
-		d.Disable()
-		return
-	}
-	// Walk container children.
-	if c, ok := obj.(*fyne.Container); ok {
-		for _, child := range c.Objects {
-			disableNeonButton(child)
-		}
-	}
-}

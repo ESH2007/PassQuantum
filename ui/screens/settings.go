@@ -7,23 +7,24 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/canvas"
-	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/layout"
-	fynetheme "fyne.io/fyne/v2/theme"
-	"fyne.io/fyne/v2/widget"
 	"passquantum/app"
 	"passquantum/bridge"
 	"passquantum/theme"
 	"passquantum/ui/widgets"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
+	fynetheme "fyne.io/fyne/v2/theme"
+	"fyne.io/fyne/v2/widget"
 )
 
 type SettingsSubview int
@@ -38,7 +39,6 @@ const (
 // ShowSettingsScreen displays the application settings
 func ShowSettingsScreen(w fyne.Window, fyneApp fyne.App, appState *app.AppState) {
 	w.SetTitle("PassQuantum - Settings")
-	w.Resize(fyne.NewSize(1100, 700))
 
 	// Create navigation state
 	navState := &NavigationState{
@@ -61,104 +61,66 @@ func ShowSettingsScreen(w fyne.Window, fyneApp fyne.App, appState *app.AppState)
 
 func buildCustomSettingsView(w fyne.Window, fyneApp fyne.App, appState *app.AppState) fyne.CanvasObject {
 	selectedSubview := SettingsSubviewSecurity
-	tabStrip := container.New(layout.NewGridLayoutWithColumns(4))
 	contentContainer := container.NewMax()
 
+	header := theme.PageHeader(
+		"PASSQUANTUM / SETTINGS",
+		"Settings",
+		"",
+		nil,
+	)
+
+	var tabWidget fyne.CanvasObject
 	var refresh func()
 	refresh = func() {
-		tabStrip.Objects = []fyne.CanvasObject{
-			theme.CreateTabButton("Security", selectedSubview == SettingsSubviewSecurity, func() {
-				selectedSubview = SettingsSubviewSecurity
+		tabWidget = theme.UnderlineTabs(
+			[]string{"Security", "Vaults", "Appearance", "About"},
+			int(selectedSubview),
+			func(idx int) {
+				selectedSubview = SettingsSubview(idx)
 				refresh()
-			}),
-			theme.CreateTabButton("Vaults", selectedSubview == SettingsSubviewVaults, func() {
-				selectedSubview = SettingsSubviewVaults
-				refresh()
-			}),
-			theme.CreateTabButton("Visuals", selectedSubview == SettingsSubviewVisuals, func() {
-				selectedSubview = SettingsSubviewVisuals
-				refresh()
-			}),
-			theme.CreateTabButton("About", selectedSubview == SettingsSubviewAbout, func() {
-				selectedSubview = SettingsSubviewAbout
-				refresh()
-			}),
-		}
-		tabStrip.Refresh()
+			},
+		)
 
 		var body fyne.CanvasObject
 		switch selectedSubview {
 		case SettingsSubviewSecurity:
-			body = buildSettingsPanel("Security", "Manage the global master password and session controls.", buildSecuritySettings(w, fyneApp, appState))
+			body = buildSecuritySettings(w, fyneApp, appState)
 		case SettingsSubviewVaults:
-			body = buildSettingsPanel("Vaults", "Create, back up, import, and restore encrypted vaults from one place.", buildVaultSettings(w, fyneApp, appState))
+			body = buildVaultSettings(w, fyneApp, appState)
 		case SettingsSubviewVisuals:
-			body = buildSettingsPanel("Visuals", "Tune appearance and interaction behavior.", buildDisplaySettings(w, fyneApp, appState))
+			body = buildDisplaySettings(w, fyneApp, appState)
 		default:
-			body = buildSettingsPanel("About", "Application details and security capabilities.", buildAboutSettings(w, fyneApp, appState))
+			body = buildAboutSettings(w, fyneApp, appState)
 		}
 
-		contentContainer.Objects = []fyne.CanvasObject{body}
+		contentContainer.Objects = []fyne.CanvasObject{
+			container.NewVBox(header, tabWidget, body),
+		}
 		contentContainer.Refresh()
 	}
 
 	refresh()
-
-	headerText := theme.CreateLabel("SETTINGS", 14, theme.ColorAccentCyan, true)
-	headerSection := container.NewVBox(headerText, theme.CreateDivider())
-
-	mainContent := container.NewVBox(
-		headerSection,
-		widget.NewLabel(""),
-		tabStrip,
-		widget.NewLabel(""),
-		contentContainer,
-	)
-
-	return container.NewPadded(container.NewVScroll(mainContent))
-}
-
-func buildSettingsPanel(title string, description string, content fyne.CanvasObject) fyne.CanvasObject {
-	header := container.NewVBox(
-		theme.CreateLabel(title, 16, theme.ColorAccentCyan, true),
-		widget.NewLabel(""),
-		theme.CreateLabel(description, 10, theme.ColorTextSec, false),
-		widget.NewLabel(""),
-		theme.CreateDivider(),
-	)
-
-	return theme.CreateCard(container.NewVBox(header, widget.NewLabel(""), content), 820, 0, true)
+	return contentContainer
 }
 
 func buildSecuritySettings(w fyne.Window, fyneApp fyne.App, appState *app.AppState) *fyne.Container {
-	passwordStrength := widget.NewSelect([]string{"Weak", "Medium", "Strong", "Very Strong"}, func(s string) {})
-	passwordStrength.PlaceHolder = "Select password strength requirement"
-	passwordStrength.SetSelected("Strong")
-
-	changePwBtn := theme.CreateNeonButton("CHANGE MASTER PASSWORD", func() {
+	changePwBtn := theme.CreateDefaultButton("Change master password", func() {
 		showChangeMasterPasswordDialog(w, appState)
-	}, 280, 40)
+	})
 
-	profileStatus := theme.CreateLabel("App-level verifier active and bound to the current private key.", 10, theme.ColorTextSec, false)
-
-	// ── Monitored Apps section ──────────────────────────────────────────────
-	// A scrollable list of currently running processes rendered as checkboxes.
-	// Checked apps are force-killed whenever the face-loss lock fires.
-
-	warningColor := color.NRGBA{R: 220, G: 90, B: 40, A: 255} // amber-orange
-
-	warningCard := theme.CreateCardWithBorderColor(
-		container.NewVBox(
-			theme.CreateLabel("⚠  FORCE-KILL WARNING", 11, warningColor, true),
-			widget.NewLabel(""),
-			theme.CreateLabel(
-				"The processes checked below will be force-killed with NO save prompt\n"+
-					"as soon as your face is not detected for 5 seconds.\n"+
-					"Make sure any unsaved work in those apps is acceptable to lose.",
-				10, theme.ColorTextPrimary, false,
+	masterPwCard := theme.CardWithHeader("SECURITY", "Master password", nil,
+		container.NewBorder(nil, nil,
+			container.NewVBox(
+				theme.MonoText("App-level verifier active and bound to the current private key.", 11, theme.ColorFg2),
 			),
+			changePwBtn,
 		),
-		760, 0, warningColor,
+	)
+
+	warningCard := theme.WarningBanner(
+		"FORCE-KILL WARNING",
+		"The processes checked below will be force-killed with NO save prompt as soon as your face is not detected for 5 seconds.",
 	)
 
 	prefs := fyneApp.Preferences()
@@ -232,117 +194,141 @@ func buildSecuritySettings(w fyne.Window, fyneApp fyne.App, appState *app.AppSta
 
 	refreshAppList() // initial population
 
-	refreshBtn := theme.CreateSecondaryButton("REFRESH APPS", func() {
+	refreshBtn := theme.CreateGhostButton("Refresh apps", func() {
 		refreshAppList()
-	}, 160, 36)
+	})
 
 	appScroll := container.NewVScroll(appListContainer)
-	appScroll.SetMinSize(fyne.NewSize(760, 200))
+	appScroll.SetMinSize(fyne.NewSize(0, 200))
 
-	return container.NewVBox(
-		theme.CreateLabel("MASTER PASSWORD", 11, theme.ColorPurple, true),
-		profileStatus,
-		widget.NewLabel(""),
-		theme.CreateLabel("Password Strength:", 10, theme.ColorTextSec, false),
-		passwordStrength,
-		widget.NewLabel(""),
-		container.NewCenter(changePwBtn),
-		widget.NewLabel(""),
-		theme.CreateDivider(),
-		widget.NewLabel(""),
-		theme.CreateLabel("MONITORED APPS", 11, theme.ColorPurple, true),
-		theme.CreateLabel("These apps will be force-closed when face is not detected for 5 seconds.", 10, theme.ColorTextSec, false),
-		widget.NewLabel(""),
-		warningCard,
-		widget.NewLabel(""),
-		container.NewHBox(refreshBtn),
-		widget.NewLabel(""),
-		appScroll,
-		widget.NewLabel(""),
-		theme.CreateDivider(),
+	guardCard := theme.CardWithHeader("PRESENCE GUARD", "Face-detection auto-kill", refreshBtn,
+		container.NewVBox(
+			warningCard,
+			appScroll,
+		),
 	)
+
+	return container.NewVBox(masterPwCard, guardCard)
 }
 
 func buildVaultSettings(w fyne.Window, fyneApp fyne.App, appState *app.AppState) *fyne.Container {
-	currentVaultLabel := theme.CreateLabel("Current Vault: "+appState.CurrentVault, 10, theme.ColorTextSec, false)
-	statsLabel := theme.CreateLabel(fmt.Sprintf("Total Vaults: %d", len(app.ListVaults())), 10, theme.ColorTextSec, false)
-
-	compactBtn := theme.CreateNeonButton("COMPACT VAULT", func() {
-		widgets.ShowAppInformation("Compact", "Vault compaction is being performed...", w)
-	}, 200, 40)
-
-	exportBtn := theme.CreateSecondaryButton("EXPORT VAULT", func() {
-		widgets.ShowAppInformation("Export", "Select location to export encrypted vault backup", w)
-	}, 200, 40)
-
-	importBtn := theme.CreateSecondaryButton("IMPORT VAULT", func() {
-		widgets.ShowAppInformation("Import", "Select backup file to import", w)
-	}, 200, 40)
-
-	backupNowBtn := theme.CreateNeonButton("BACKUP NOW", func() {
-		widgets.ShowAppInformation("Backup", "Vault backup created successfully!", w)
-	}, 180, 40)
-
-	restoreBtn := theme.CreateSecondaryButton("RESTORE", func() {
-		widgets.ShowAppConfirm("Restore", "This will replace your current vault. Are you sure?", func(ok bool) {
-			if ok {
-				widgets.ShowAppInformation("Restore", "Select a backup file to restore", w)
-			}
-		}, w)
-	}, 150, 40)
-
-	return container.NewVBox(
-		theme.CreateLabel("ACTIVE VAULT", 11, theme.ColorPurple, true),
-		currentVaultLabel,
-		statsLabel,
-		widget.NewLabel(""),
-		theme.CreateLabel("Maintenance", 10, theme.ColorPurple, false),
-		container.NewCenter(compactBtn),
-		widget.NewLabel(""),
-		theme.CreateLabel("Backup & Restore", 10, theme.ColorPurple, false),
-		container.NewHBox(exportBtn, importBtn),
-		widget.NewLabel(""),
-		container.NewHBox(backupNowBtn, restoreBtn),
+	vaultInfoCard := theme.CardWithHeader("VAULT", "Active vault", nil,
+		theme.KeyValueTable([]theme.KVItem{
+			{Key: "Name", Value: appState.CurrentVault},
+			{Key: "Total vaults", Value: fmt.Sprintf("%d", len(app.ListVaults()))},
+		}),
 	)
+
+	compactBtn := theme.CreateDefaultButton("Compact vault", func() {
+		widgets.ShowAppInformation("Compact", "Vault compaction is being performed...", w)
+	})
+
+	compactCard := theme.CardWithHeader("MAINTENANCE", "Compact & verify", nil,
+		container.NewBorder(nil, nil,
+			theme.MonoText("Reclaim space and verify vault integrity.", 11, theme.ColorFg2),
+			compactBtn,
+		),
+	)
+
+	exportBtn := theme.CreatePrimaryButton("Export", func() {
+		widgets.ShowAppInformation("Export", "Select location to export encrypted vault backup", w)
+	})
+	importBtn := theme.CreateDefaultButton("Import", func() {
+		widgets.ShowAppInformation("Import", "Select backup file to import", w)
+	})
+	backupNowBtn := theme.CreateDefaultButton("Back up now", func() {
+		widgets.ShowAppInformation("Backup", "Vault backup created successfully!", w)
+	})
+
+	backupCard := theme.CardWithHeader("BACKUP", "Backup & restore", nil,
+		container.NewVBox(
+			container.NewGridWithColumns(2,
+				container.NewVBox(theme.SectionEyebrow("EXPORT"), exportBtn),
+				container.NewVBox(theme.SectionEyebrow("IMPORT"), importBtn),
+			),
+			container.NewBorder(nil, nil,
+				theme.MonoText("Auto-backup on vault changes.", 11, theme.ColorFg2),
+				backupNowBtn,
+			),
+		),
+	)
+
+	return container.NewVBox(vaultInfoCard, compactCard, backupCard)
 }
 
 func buildDisplaySettings(w fyne.Window, fyneApp fyne.App, appState *app.AppState) *fyne.Container {
-	themeSelect := widget.NewSelect([]string{"Dark", "Light", "System"}, func(_ string) {})
-	themeSelect.PlaceHolder = "Select theme"
-	themeSelect.SetSelected("Dark")
+	// Accent palette swatches
+	type accentOption struct {
+		name string
+		hex  string
+		c    color.NRGBA
+	}
+	accents := []accentOption{
+		{"Blue", "#3b82f6", color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 255}},
+		{"Emerald", "#10b981", color.NRGBA{R: 0x10, G: 0xb9, B: 0x81, A: 255}},
+		{"Gold", "#eab308", color.NRGBA{R: 0xea, G: 0xb3, B: 0x08, A: 255}},
+		{"Mono", "#94a3b8", color.NRGBA{R: 0x94, G: 0xa3, B: 0xb8, A: 255}},
+		{"Cyan", "#06b6d4", color.NRGBA{R: 0x06, G: 0xb6, B: 0xd4, A: 255}},
+	}
 
-	fontSizeSelect := widget.NewSelect([]string{"Small", "Medium", "Large"}, func(s string) {})
-	fontSizeSelect.PlaceHolder = "Select font size"
-	fontSizeSelect.SetSelected("Medium")
+	swatches := make([]fyne.CanvasObject, len(accents))
+	for i, a := range accents {
+		accent := a
+		swatch := canvas.NewRectangle(accent.c)
+		swatch.CornerRadius = theme.RadiusInput
+		swatch.SetMinSize(fyne.NewSize(96, 56))
 
-	showOnHoverCheck := widget.NewCheck("Show password on hover", func(b bool) {})
-	confirmActionsCheck := widget.NewCheck("Confirm before deleting passwords", func(b bool) {})
-	confirmActionsCheck.SetChecked(true)
+		border := canvas.NewRectangle(color.Transparent)
+		border.CornerRadius = theme.RadiusInput
+		border.StrokeWidth = 1
+		border.StrokeColor = theme.ColorLine2
+		border.FillColor = color.Transparent
+		border.SetMinSize(fyne.NewSize(96, 56))
 
-	preview1 := canvasColorPreview(theme.ColorBg)
-	preview2 := canvasColorPreview(theme.ColorPrimaryButton)
-	preview3 := canvasColorPreview(theme.ColorSecondaryButton)
+		label := theme.MonoText(accent.name+"\n"+accent.hex, 10, theme.ColorFg2)
 
-	manualPersonalizeBtn := theme.CreateNeonButton("MANUAL PERSONALIZATION", func() {
-		ShowColorPersonalizationDialog(w, fyneApp, appState)
-	}, 280, 40)
+		btn := theme.NewClickOverlay(func() {
+			theme.ColorAccentCyan = accent.c
+			theme.ColorAccentCyn = accent.c
+			theme.ColorPrimaryButton = accent.c
+			theme.ColorAccentSoft = color.NRGBA{R: accent.c.R, G: accent.c.G, B: accent.c.B, A: 0x24}
+			theme.ColorAccentLine = color.NRGBA{R: accent.c.R, G: accent.c.G, B: accent.c.B, A: 0x66}
+			ShowSettingsScreen(w, fyneApp, appState)
+		})
 
-	uploadBtn := theme.CreateNeonButton("UPLOAD IMAGE TO ANALYZE", func() {
+		swatches[i] = container.NewVBox(
+			container.NewStack(swatch, border, btn),
+			label,
+		)
+	}
+
+	accentCard := theme.CardWithHeader("ACCENT", "Accent palette", nil,
+		container.NewHBox(swatches...),
+	)
+
+	uploadBtn := theme.CreatePrimaryButton("Upload image", func() {
 		showThemePicker(fyneApp, w, func() {
 			ShowSettingsScreen(w, fyneApp, appState)
 			widgets.ShowAppInformation("Palette Applied", "Theme generated from image and saved for next launch.", w)
 		})
-	}, 300, 40)
+	})
 
-	resetPaletteBtn := theme.CreateSecondaryButton("RESET DEFAULT COLORS", func() {
+	resetBtn := theme.CreateGhostButton("Reset defaults", func() {
 		fyneApp.Settings().SetTheme(fynetheme.DefaultTheme())
 		resetDefaultPalette()
 		clearManualPalettePreferences(fyneApp)
 		fyneApp.Preferences().SetString(themeImagePathPrefKey, "")
 		ShowSettingsScreen(w, fyneApp, appState)
-	}, 250, 40)
+	})
 
-	changeIconBtn := theme.CreateNeonButton("CHANGE APP ICON", func() {
+	paletteCard := theme.CardWithHeader("PALETTE", "Image palette", nil,
+		container.NewVBox(
+			theme.MonoText("Upload an image to extract colors and apply them to the UI.", 11, theme.ColorFg2),
+			container.NewHBox(uploadBtn, resetBtn),
+		),
+	)
+
+	changeIconBtn := theme.CreateDefaultButton("Change", func() {
 		widgets.PickImageFile("Select App Icon", func(path string) {
 			data, readErr := os.ReadFile(path)
 			if readErr != nil || len(data) == 0 {
@@ -351,95 +337,93 @@ func buildDisplaySettings(w fyne.Window, fyneApp fyne.App, appState *app.AppStat
 			}
 			fyneApp.SetIcon(fyne.NewStaticResource(filepath.Base(path), data))
 			fyneApp.Preferences().SetString("custom_icon_path", path)
-			widgets.ShowAppInformation("App Icon", "App icon updated. It will also be applied on next launch.", w)
+			widgets.ShowAppInformation("App Icon", "App icon updated.", w)
 		}, func(err error) {
 			widgets.ShowAppError(err, w)
 		})
-	}, 220, 40)
+	})
 
-	resetIconBtn := theme.CreateSecondaryButton("RESET APP ICON", func() {
+	resetIconBtn := theme.CreateGhostButton("Reset", func() {
 		fyneApp.Preferences().SetString("custom_icon_path", "")
 		SetApplicationIcon(fyneApp)
 		widgets.ShowAppInformation("App Icon", "App icon has been reset to the default.", w)
-	}, 200, 40)
+	})
 
-	return container.NewVBox(
-		theme.CreateLabel("APPEARANCE", 11, theme.ColorPurple, true),
-		theme.CreateLabel("Appearance", 10, theme.ColorPurple, false),
-		theme.CreateLabel("Theme:", 9, theme.ColorTextSec, false),
-		themeSelect,
-		theme.CreateLabel("Font Size:", 9, theme.ColorTextSec, false),
-		fontSizeSelect,
-		widget.NewLabel(""),
-		theme.CreateLabel("Behavior", 10, theme.ColorPurple, false),
-		showOnHoverCheck,
-		confirmActionsCheck,
-		widget.NewLabel(""),
-		theme.CreateLabel("Image Palette", 10, theme.ColorPurple, false),
-		theme.CreateLabel("Upload an image to extract the 3 most common colors and apply them to the UI.", 9, theme.ColorTextSec, false),
-		container.NewCenter(uploadBtn),
-		widget.NewLabel(""),
-		container.NewHBox(
-			container.NewVBox(theme.CreateLabel("Background + Containers", 8, theme.ColorTextSec, false), preview1),
-			widget.NewLabel("   "),
-			container.NewVBox(theme.CreateLabel("Main Buttons", 8, theme.ColorTextSec, false), preview2),
-			widget.NewLabel("   "),
-			container.NewVBox(theme.CreateLabel("Secondary Buttons", 8, theme.ColorTextSec, false), preview3),
+	iconCard := theme.CardWithHeader("ICON", "App icon", nil,
+		container.NewVBox(
+			theme.MonoText("Replace the application icon. Persists across restarts.", 11, theme.ColorFg2),
+			container.NewHBox(changeIconBtn, resetIconBtn),
 		),
-		widget.NewLabel(""),
-		theme.CreateLabel("Manual Personalization", 10, theme.ColorPurple, false),
-		theme.CreateLabel("Pick exact colors for each UI role using an RGB map, hex, or RGB code.", 9, theme.ColorTextSec, false),
-		container.NewCenter(manualPersonalizeBtn),
-		widget.NewLabel(""),
-		container.NewCenter(resetPaletteBtn),
-		widget.NewLabel(""),
-		theme.CreateDivider(),
-		widget.NewLabel(""),
-		theme.CreateLabel("App Icon", 10, theme.ColorPurple, false),
-		theme.CreateLabel("Replace the application icon with any PNG or JPEG image. Takes effect immediately and persists across restarts.", 9, theme.ColorTextSec, false),
-		widget.NewLabel(""),
-		container.NewCenter(container.NewHBox(changeIconBtn, resetIconBtn)),
 	)
+
+	return container.NewVBox(accentCard, paletteCard, iconCard)
 }
 
 func buildAboutSettings(w fyne.Window, fyneApp fyne.App, appState *app.AppState) *fyne.Container {
-	appNameLabel := theme.CreateLabel("PassQuantum", 16, theme.ColorAccentCyn, true)
-	versionLabel := theme.CreateLabel("Version 1.0.0", 11, theme.ColorTextSec, false)
-	descriptionLabel := theme.CreateLabel("A post-quantum cryptography password manager using Kyber and AES-256-GCM", 10, theme.ColorTextPrim, false)
+	// Product card
+	atomIco := canvas.NewImageFromResource(theme.IconAtom)
+	atomIco.SetMinSize(fyne.NewSize(48, 48))
 
-	featuresBox := container.NewVBox(
-		theme.CreateLabel("Features", 10, theme.ColorPurple, true),
-		theme.CreateLabel("✓ Post-Quantum Cryptography (Kyber-768)", 9, theme.ColorTextPrim, false),
-		theme.CreateLabel("✓ AES-256-GCM Encryption", 9, theme.ColorTextPrim, false),
-		theme.CreateLabel("✓ Multiple Vault Support", 9, theme.ColorTextPrim, false),
-		theme.CreateLabel("✓ Secure Key Derivation", 9, theme.ColorTextPrim, false),
-		theme.CreateLabel("✓ Zero-Knowledge Architecture", 9, theme.ColorTextPrim, false),
+	iconBg := canvas.NewRectangle(theme.ColorAccentSoft)
+	iconBg.CornerRadius = 18
+	iconBg.SetMinSize(fyne.NewSize(96, 96))
+	iconBorder := canvas.NewRectangle(color.Transparent)
+	iconBorder.CornerRadius = 18
+	iconBorder.StrokeWidth = 1
+	iconBorder.StrokeColor = theme.ColorAccentLine
+	iconBorder.FillColor = color.Transparent
+	iconBorder.SetMinSize(fyne.NewSize(96, 96))
+	iconBlock := container.NewStack(iconBg, iconBorder, container.NewCenter(atomIco))
+
+	productInfo := container.NewVBox(
+		theme.SectionEyebrow("PASSQUANTUM"),
+		canvas.NewText("PassQuantum", theme.ColorTextPrimary),
+		theme.MonoText("v1.0.0 | PQ-Safe", 11, theme.ColorFg2),
+		canvas.NewText("A post-quantum cryptography password manager using Kyber and AES-256-GCM.", theme.ColorTextSecondary),
 	)
 
-	developedByLabel := theme.CreateLabel("Developed by: PassQuantum Team", 10, theme.ColorTextSec, false)
-	licenseLabel := theme.CreateLabel("License: MIT", 10, theme.ColorTextSec, false)
+	productCard := theme.CardWithHeader("", "", nil,
+		container.NewHBox(
+			container.NewGridWrap(fyne.NewSize(96, 96), iconBlock),
+			productInfo,
+		),
+	)
 
-	docsBtn := theme.CreateSecondaryButton("📖 DOCS", func() {
-		widgets.ShowAppInformation("Docs", "Visit https://github.com/passquantum for documentation", w)
-	}, 140, 40)
+	// Security stack card
+	securityCard := theme.CardWithHeader("CRYPTOGRAPHY", "Security stack", nil,
+		theme.KeyValueTable([]theme.KVItem{
+			{Key: "Bulk encryption", Value: "AES-256-GCM", Detail: "Symmetric — each entry encrypted independently with a unique key"},
+			{Key: "Key encapsulation", Value: "ML-KEM-768 (Kyber)", Detail: "Post-quantum — resists attacks from quantum computers (NIST FIPS 203)"},
+			{Key: "Password KDF", Value: "Argon2id", Detail: "Memory-hard stretching — intentionally slow to brute-force"},
+			{Key: "Authentication", Value: "HMAC-SHA-512", Detail: "Tamper detection — any modification to ciphertext is detected"},
+			{Key: "Random source", Value: "crypto/rand", Detail: "Hardware-seeded — OS kernel getrandom(2), not math/rand"},
+			{Key: "Architecture", Value: "Zero-knowledge, offline-first", Detail: "No telemetry, no network, no cloud — data never leaves your machine"},
+		}),
+	)
 
-	updatesBtn := theme.CreateNeonButton("🔄 UPDATES", func() {
+	// Meta card
+	repoURL := "https://github.com/ESH2007/PassQuantum/tree/master/docs"
+	docsBtn := theme.CreateDefaultButton("Documentation", func() {
+		u, err := url.Parse(repoURL)
+		if err == nil {
+			fyneApp.OpenURL(u)
+		}
+	})
+	updatesBtn := theme.CreateGhostButton("Check for updates", func() {
 		widgets.ShowAppInformation("Updates", "You are running the latest version!", w)
-	}, 160, 40)
+	})
 
-	return container.NewVBox(
-		container.NewCenter(appNameLabel),
-		container.NewCenter(versionLabel),
-		widget.NewLabel(""),
-		container.NewCenter(descriptionLabel),
-		widget.NewLabel(""),
-		featuresBox,
-		widget.NewLabel(""),
-		container.NewCenter(developedByLabel),
-		container.NewCenter(licenseLabel),
-		widget.NewLabel(""),
-		container.NewCenter(container.NewHBox(docsBtn, updatesBtn)),
+	metaCard := theme.CardWithHeader("META", "Build information", nil,
+		container.NewVBox(
+			theme.KeyValueTable([]theme.KVItem{
+				{Key: "License", Value: "MIT"},
+				{Key: "Maintainer", Value: "ESH2007"},
+			}),
+			container.NewHBox(docsBtn, updatesBtn),
+		),
 	)
+
+	return container.NewVBox(productCard, securityCard, metaCard)
 }
 
 func showChangeMasterPasswordDialog(w fyne.Window, appState *app.AppState) {
@@ -452,21 +436,25 @@ func showChangeMasterPasswordDialog(w fyne.Window, appState *app.AppState) {
 	confirmPwInput := widget.NewPasswordEntry()
 	confirmPwInput.PlaceHolder = "Confirm new password"
 
-	buildField := func(label string, entry *widget.Entry) fyne.CanvasObject {
-		return container.NewVBox(
-			theme.CreateLabel(label, 10, theme.ColorTextPrimary, true),
-			theme.CreateStyledPasswordInput(entry, 420, 40),
-		)
-	}
+	formContent := container.NewVBox(
+		theme.SectionEyebrow("CHANGE MASTER PASSWORD"),
+		theme.FieldLabel("CURRENT PASSWORD", nil),
+		oldPwInput,
+		theme.FieldLabel("NEW PASSWORD", nil),
+		newPwInput,
+		theme.FieldLabel("CONFIRM PASSWORD", nil),
+		confirmPwInput,
+	)
 
-	var d dialog.Dialog
-	cancelBtn := theme.CreateSecondaryButton("Cancel", func() {
+	var d *dialog.CustomDialog
+
+	cancelBtn := theme.CreateGhostButton("Cancel", func() {
 		if d != nil {
 			d.Hide()
 		}
-	}, 120, 40)
+	})
 
-	changeBtn := theme.CreateNeonButton("Change", func() {
+	changeBtn := theme.CreatePrimaryButton("Change password", func() {
 		if newPwInput.Text == "" {
 			widgets.ShowAppError(fmt.Errorf("new password cannot be empty"), w)
 			return
@@ -486,22 +474,11 @@ func showChangeMasterPasswordDialog(w fyne.Window, appState *app.AppState) {
 			d.Hide()
 		}
 		widgets.ShowAppInformation("Success", "Master password changed successfully and all vaults were re-encrypted.", w)
-	}, 120, 40)
+	})
 
-	content := container.NewVBox(
-		theme.CreateLabel("Change Master Password", 16, theme.ColorTextPrimary, true),
-		widget.NewLabel(""),
-		buildField("Current Password", oldPwInput),
-		widget.NewLabel(""),
-		buildField("New Password", newPwInput),
-		widget.NewLabel(""),
-		buildField("Confirm Password", confirmPwInput),
-		widget.NewLabel(""),
-		container.NewCenter(container.NewHBox(cancelBtn, changeBtn)),
-	)
-
-	card := theme.CreateCard(content, 420, 0, true)
-	d = dialog.NewCustomWithoutButtons("", container.NewPadded(card), w)
+	buttonBox := container.NewHBox(cancelBtn, changeBtn)
+	dialogContent := container.NewVBox(formContent, container.NewCenter(buttonBox))
+	d = dialog.NewCustom("Change Master Password", "Close", dialogContent, w)
 	d.Show()
 }
 
@@ -651,28 +628,32 @@ func applyExtractedPalette(colors []color.NRGBA) {
 }
 
 func resetDefaultPalette() {
-	theme.ColorBg = color.NRGBA{R: 11, G: 15, B: 20, A: 255}
-	theme.ColorSidebarBg = color.NRGBA{R: 20, G: 25, B: 32, A: 255}
-	theme.ColorCardBg = color.NRGBA{R: 26, G: 31, B: 40, A: 255}
-	theme.ColorInputBg = color.NRGBA{R: 30, G: 40, B: 50, A: 255}
+	theme.ColorBg = color.NRGBA{R: 0x0b, G: 0x0e, B: 0x13, A: 255}
+	theme.ColorSidebarBg = color.NRGBA{R: 0x0f, G: 0x13, B: 0x19, A: 255}
+	theme.ColorCardBg = color.NRGBA{R: 0x13, G: 0x18, B: 0x22, A: 255}
+	theme.ColorInputBg = color.NRGBA{R: 0x0f, G: 0x13, B: 0x19, A: 255}
 
-	theme.ColorAccentCyan = color.NRGBA{R: 34, G: 211, B: 238, A: 255}
+	theme.ColorAccentCyan = color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 255}
 	theme.ColorAccentCyn = theme.ColorAccentCyan
-	theme.ColorAccentPink = color.NRGBA{R: 236, G: 72, B: 153, A: 255}
+	theme.ColorAccentPink = theme.ColorAccentCyan
 	theme.ColorMagenta = theme.ColorAccentPink
-	theme.ColorPurple = color.NRGBA{R: 168, G: 85, B: 247, A: 200}
+	theme.ColorPurple = color.NRGBA{R: 0x7a, G: 0x82, B: 0x94, A: 255}
 
-	theme.ColorTextPrimary = theme.PickAdaptiveTextColor(theme.ColorBg)
-	theme.ColorTextSecondary = theme.PickAdaptiveTextColor(theme.ColorCardBg)
+	theme.ColorTextPrimary = color.NRGBA{R: 0xe7, G: 0xea, B: 0xf0, A: 255}
+	theme.ColorTextSecondary = color.NRGBA{R: 0xb3, G: 0xba, B: 0xc8, A: 255}
 	theme.ColorTextPrim = theme.ColorTextPrimary
 	theme.ColorTextSec = theme.ColorTextSecondary
 
-	theme.ColorBorderCyan = color.NRGBA{R: 34, G: 211, B: 238, A: 180}
+	theme.ColorBorderCyan = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x1a}
 	theme.ColorBorder = theme.ColorBorderCyan
-	theme.ColorGlowCyan = color.NRGBA{R: 34, G: 211, B: 238, A: 80}
+	theme.ColorGlowCyan = color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 0x24}
 
 	theme.ColorPrimaryButton = theme.ColorAccentCyan
-	theme.ColorSecondaryButton = theme.ColorAccentPink
+	theme.ColorSecondaryButton = color.NRGBA{R: 0x1a, G: 0x20, B: 0x30, A: 255}
+
+	theme.ColorDanger = color.NRGBA{R: 0xd0, G: 0x4a, B: 0x4a, A: 255}
+	theme.ColorWarning = color.NRGBA{R: 0xd9, G: 0x90, B: 0x30, A: 255}
+	theme.ColorSuccess = color.NRGBA{R: 0x2e, G: 0xa9, B: 0x6b, A: 255}
 }
 
 func blend(a color.NRGBA, b color.NRGBA, ratio float64) color.NRGBA {

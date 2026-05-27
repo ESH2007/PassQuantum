@@ -1,8 +1,12 @@
 package screens
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	_ "image/png"
 	"os"
+	"path/filepath"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/canvas"
@@ -10,6 +14,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"passquantum/app"
 	"passquantum/theme"
+	"passquantum/ui/assets"
 	"passquantum/ui/widgets"
 )
 
@@ -35,7 +40,7 @@ func showCreateMasterPasswordScreen(w fyne.Window, fyneApp fyne.App, appState *a
 	confirmInput := widget.NewPasswordEntry()
 	confirmInput.PlaceHolder = "Confirm the master password"
 
-	actionBtn := theme.CreateNeonButton("[  CREATE MASTER PASSWORD  ]", func() {
+	actionBtn := theme.CreatePrimaryButton("Create master password", func() {
 		if passwordInput.Text == "" {
 			widgets.ShowAppError(fmt.Errorf("master password cannot be empty"), w)
 			return
@@ -58,8 +63,6 @@ func showCreateMasterPasswordScreen(w fyne.Window, fyneApp fyne.App, appState *a
 			}
 		}
 
-		// First-time setup: if the face guard is active and no face data exists
-		// yet, show the training screen.  onComplete proceeds to vault selection.
 		if appState.FaceGuard != nil && !faceDataExists() {
 			ShowTrainingScreen(w, appState.FaceGuard, appState, func() {
 				ShowVaultSelection(w, fyneApp, appState)
@@ -67,32 +70,29 @@ func showCreateMasterPasswordScreen(w fyne.Window, fyneApp fyne.App, appState *a
 			return
 		}
 		ShowVaultSelection(w, fyneApp, appState)
-	}, 320, 50)
+	})
 
 	screen := buildAccessScreen(
 		"CREATE MASTER PASSWORD",
 		"Set one global password for the app. It is verified against metadata bound to the current private key.",
 		warning,
 		[]fyne.CanvasObject{
-			theme.CreateLabel("[ MASTER PASSWORD ]", 12, theme.ColorPurple, true),
-			container.NewCenter(theme.CreateStyledInput(passwordInput, 450, 45)),
-			widget.NewLabel(""),
-			theme.CreateLabel("[ CONFIRM PASSWORD ]", 12, theme.ColorPurple, true),
-			container.NewCenter(theme.CreateStyledInput(confirmInput, 450, 45)),
-			widget.NewLabel(""),
+			theme.FieldLabel("MASTER PASSWORD", nil),
+			passwordInput,
+			theme.FieldLabel("CONFIRM PASSWORD", nil),
+			confirmInput,
 			container.NewCenter(actionBtn),
 		},
 	)
 
 	w.SetContent(screen)
-	w.Resize(fyne.NewSize(820, 640))
 }
 
 func showUnlockScreen(w fyne.Window, fyneApp fyne.App, appState *app.AppState) {
 	passwordInput := widget.NewPasswordEntry()
 	passwordInput.PlaceHolder = "Enter your global master password"
 
-	actionBtn := theme.CreateNeonButton("[  UNLOCK  ]", func() {
+	actionBtn := theme.CreatePrimaryButton("Unlock", func() {
 		if passwordInput.Text == "" {
 			widgets.ShowAppError(fmt.Errorf("master password cannot be empty"), w)
 			return
@@ -103,83 +103,84 @@ func showUnlockScreen(w fyne.Window, fyneApp fyne.App, appState *app.AppState) {
 			return
 		}
 
-		// Start continuous face monitoring as soon as the app is unlocked.
-		// This covers the vault-selection screen and any subsequent screen.
 		if appState.FaceGuard != nil {
 			go appState.FaceGuard.SendCommand("START_MONITOR")
 		}
 
 		ShowVaultSelection(w, fyneApp, appState)
-	}, 280, 50)
+	})
 
 	screen := buildAccessScreen(
 		"UNLOCK PASSQUANTUM",
 		"Unlock the app before any vault screen becomes available.",
 		"",
 		[]fyne.CanvasObject{
-			theme.CreateLabel("[ MASTER PASSWORD ]", 12, theme.ColorPurple, true),
-			container.NewCenter(theme.CreateStyledInput(passwordInput, 450, 45)),
-			widget.NewLabel(""),
+			theme.FieldLabel("MASTER PASSWORD", nil),
+			passwordInput,
 			container.NewCenter(actionBtn),
 		},
 	)
 
 	w.SetContent(screen)
-	w.Resize(fyne.NewSize(800, 600))
 }
 
 func buildAccessScreen(title string, subtitle string, warning string, fields []fyne.CanvasObject) fyne.CanvasObject {
 	var logo fyne.CanvasObject
-	possible := []string{"PM.png", "../PM.png", "ui/PM.png", "new-passquantum/PM.png", "./PM.png"}
-	for _, path := range possible {
-		if _, err := os.Stat(path); err == nil {
-			image := canvas.NewImageFromFile(path)
-			image.FillMode = canvas.ImageFillContain
-			image.SetMinSize(fyne.NewSize(120, 120))
-			logo = image
-			break
-		}
+	if img, _, err := image.Decode(bytes.NewReader(assets.LogoImage)); err == nil {
+		logoImg := canvas.NewImageFromImage(img)
+		logoImg.FillMode = canvas.ImageFillContain
+		logoImg.SetMinSize(fyne.NewSize(96, 96))
+		logo = logoImg
+	} else {
+		atomIco := canvas.NewImageFromResource(theme.IconAtom)
+		atomIco.SetMinSize(fyne.NewSize(48, 48))
+		iconBg := canvas.NewRectangle(theme.ColorAccentSoft)
+		iconBg.CornerRadius = 18
+		iconBg.SetMinSize(fyne.NewSize(96, 96))
+		logo = container.NewStack(iconBg, container.NewCenter(atomIco))
 	}
 
-	if logo == nil {
-		logo = theme.CreateHeaderText("PassQuantum", 36)
-	}
+	titleTxt := canvas.NewText(title, theme.ColorTextPrimary)
+	titleTxt.TextSize = 22
+	titleTxt.TextStyle = fyne.TextStyle{Bold: true}
 
-	noticeText := theme.CreateLabel(subtitle, 12, theme.ColorTextSecondary, false)
+	subTxt := canvas.NewText(subtitle, theme.ColorTextSecondary)
+	subTxt.TextSize = 13
+
+	divider := canvas.NewRectangle(theme.ColorLine1)
+	divider.SetMinSize(fyne.NewSize(0, 1))
+
 	cardObjects := []fyne.CanvasObject{
-		widget.NewLabel(""),
 		container.NewCenter(logo),
-		widget.NewLabel(""),
-		container.NewCenter(theme.CreateHeaderText(title, 26)),
-		container.NewCenter(noticeText),
-		widget.NewLabel(""),
-		theme.CreateGlowingDivider(),
-		widget.NewLabel(""),
+		container.NewCenter(titleTxt),
+		container.NewCenter(subTxt),
+		divider,
 	}
 
 	if warning != "" {
-		warningBox := theme.CreateCardWithBorderColor(
-			container.NewVBox(
-				theme.CreateLabel("KEY MISMATCH DETECTED", 11, theme.ColorWarning, true),
-				widget.NewLabel(""),
-				theme.CreateLabel(warning, 10, theme.ColorTextPrimary, false),
-			),
-			480,
-			120,
-			theme.ColorWarning,
-		)
-		cardObjects = append(cardObjects, container.NewCenter(warningBox), widget.NewLabel(""))
+		cardObjects = append(cardObjects, theme.WarningBanner("KEY MISMATCH DETECTED", warning))
 	}
 
 	cardObjects = append(cardObjects, fields...)
 
-	card := theme.CreateEnhancedCard(container.NewVBox(cardObjects...), 560, 0)
-	return theme.CreateBackgroundContainer(container.NewCenter(card))
+	// Width anchor forces the card to be at least 480px wide without collapsing height.
+	widthAnchor := canvas.NewRectangle(theme.ColorBg)
+	widthAnchor.SetMinSize(fyne.NewSize(480, 0))
+	cardObjects = append([]fyne.CanvasObject{widthAnchor}, cardObjects...)
+
+	card := theme.CardWithHeader("", "", nil, container.NewVBox(cardObjects...))
+
+	bg := canvas.NewRectangle(theme.ColorBg)
+	return container.NewStack(bg, container.NewCenter(card))
 }
 
 // faceDataExists reports whether the face_guard.py training output file is present
 // in the current working directory (same directory as the running binary).
 func faceDataExists() bool {
-	_, err := os.Stat("face_data.pkl")
+	workDir := os.Getenv("PASSQUANTUM_WORK_DIR")
+	if workDir == "" {
+		return false
+	}
+	_, err := os.Stat(filepath.Join(workDir, "face_data.pkl"))
 	return err == nil
 }

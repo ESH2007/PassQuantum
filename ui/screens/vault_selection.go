@@ -2,7 +2,6 @@ package screens
 
 import (
 	"fmt"
-	"image/color"
 	"os"
 
 	"fyne.io/fyne/v2"
@@ -18,7 +17,6 @@ import (
 // ShowVaultSelection displays the vault management and selection screen
 func ShowVaultSelection(w fyne.Window, fyneApp fyne.App, appState *app.AppState) {
 	w.SetTitle("PassQuantum - Vault Selection")
-	w.Resize(fyne.NewSize(1100, 700))
 
 	// Create navigation state
 	navState := &NavigationState{
@@ -40,61 +38,61 @@ func ShowVaultSelection(w fyne.Window, fyneApp fyne.App, appState *app.AppState)
 }
 
 func createVaultCard(w fyne.Window, fyneApp fyne.App, appState *app.AppState, vaultName string) fyne.CanvasObject {
-	nameLabel := theme.CreateLabel(vaultName, 13, theme.ColorAccentCyn, true)
-	vaultPath := app.GetVaultPath(vaultName)
-	infoLabel := theme.CreateLabel("Location: "+vaultPath, 10, theme.ColorTextSec, false)
+	isActive := vaultName == appState.CurrentVault
 
-	openBtn := theme.CreateNeonButton("OPEN", func() {
+	avatar := theme.VaultAvatar(vaultName)
+
+	titleTxt := canvas.NewText(vaultName, theme.ColorTextPrimary)
+	titleTxt.TextSize = 13
+	titleTxt.TextStyle = fyne.TextStyle{Bold: true}
+
+	var statusPill fyne.CanvasObject
+	if isActive {
+		statusPill = theme.StatusPill("Active", theme.PillOk)
+	} else {
+		statusPill = theme.StatusPill("Locked", theme.PillMute)
+	}
+	titleRow := container.NewHBox(titleTxt, statusPill)
+
+	vaultPath := app.GetVaultPath(vaultName)
+	pathTxt := theme.MonoText(vaultPath, 11, theme.ColorFg2)
+
+	openBtn := theme.CreateDefaultButton("Open", func() {
 		if err := app.OpenVault(appState, vaultName, func() { ShowMainScreen(w, fyneApp, appState) }); err != nil {
 			widgets.ShowAppError(err, w)
 		}
-	}, 80, 36)
+	})
 
-	deleteBtn := theme.CreateNeonButton("DELETE", func() {
+	deleteBtn := theme.CreateDangerButton("Delete", func() {
 		showDeleteVaultDialog(w, fyneApp, appState, vaultName)
-	}, 100, 36)
+	})
 
-	btnContainer := container.NewHBox(openBtn, deleteBtn)
-	content := container.NewVBox(nameLabel, infoLabel, btnContainer)
+	left := container.NewHBox(avatar, container.NewVBox(titleRow, pathTxt))
+	buttons := container.NewHBox(openBtn, deleteBtn)
+	row := container.NewBorder(nil, nil, left, buttons)
 
-	return theme.CreateCard(content, 850, 70, true)
+	return theme.CardWithHeader("", "", nil, row)
 }
 
 func showCreateVaultDialog(w fyne.Window, fyneApp fyne.App, appState *app.AppState) {
 	vaultNameInput := widget.NewEntry()
 	vaultNameInput.PlaceHolder = "Enter vault name"
 
-	// Create styled input containers
-	createInputContainer := func(input fyne.CanvasObject) fyne.CanvasObject {
-		bg := canvas.NewRectangle(color.NRGBA{R: 30, G: 40, B: 50, A: 255})
-		bg.SetMinSize(fyne.NewSize(350, 50))
-		bg.CornerRadius = theme.BorderRadius
-		return container.NewMax(bg, container.NewPadded(input))
-	}
-
-	// Build form content
 	formContent := container.NewVBox(
-		theme.CreateLabel("CREATE NEW VAULT", 14, theme.ColorAccentCyn, true),
-		theme.CreateDivider(),
-		widget.NewLabel(""),
-		theme.CreateLabel("Vault Name", 11, theme.ColorPurple, true),
-		createInputContainer(vaultNameInput),
-		widget.NewLabel(""),
-		theme.CreateLabel("Vaults now use the unlocked global master password automatically.", 10, theme.ColorTextSec, false),
-		widget.NewLabel(""),
+		theme.SectionEyebrow("NEW VAULT"),
+		theme.FieldLabel("VAULT NAME", nil),
+		vaultNameInput,
+		theme.MonoText("Uses the unlocked global master password automatically.", 11, theme.ColorFg2),
 	)
 
-	// Declare customDialog first so it can be referenced in button closures
 	var customDialog *dialog.CustomDialog
 
-	createBtn := theme.CreateNeonButton("✓ CREATE", func() {
+	createBtn := theme.CreatePrimaryButton("Create vault", func() {
 		vaultName := vaultNameInput.Text
-
 		if vaultName == "" {
 			widgets.ShowAppError(fmt.Errorf("vault name cannot be empty"), w)
 			return
 		}
-
 		if err := app.CreateNewVault(appState, vaultName); err != nil {
 			widgets.ShowAppError(err, w)
 			return
@@ -103,16 +101,15 @@ func showCreateVaultDialog(w fyne.Window, fyneApp fyne.App, appState *app.AppSta
 			customDialog.Hide()
 		}
 		ShowVaultSelection(w, fyneApp, appState)
-	}, 120, 44)
+	})
 
-	cancelBtn := theme.CreateNeonButton("✕ CANCEL", func() {
+	cancelBtn := theme.CreateGhostButton("Cancel", func() {
 		if customDialog != nil {
 			customDialog.Hide()
 		}
-	}, 120, 44)
+	})
 
 	buttonBox := container.NewHBox(cancelBtn, createBtn)
-
 	dialogContent := container.NewVBox(formContent, container.NewCenter(buttonBox))
 	customDialog = dialog.NewCustom("Create New Vault", "Close", dialogContent, w)
 	customDialog.Show()

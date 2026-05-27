@@ -209,6 +209,31 @@ func resolveScript(script string) string {
 }
 
 // ==============================
+// Shutdown
+// ==============================
+
+// Shutdown terminates the face_guard.py child process and closes all network
+// connections, releasing the camera immediately.  Safe to call multiple times.
+func (g *FaceGuard) Shutdown() {
+	if g.conn != nil {
+		_ = g.conn.Close()
+		g.conn = nil
+	}
+	if g.listener != nil {
+		_ = g.listener.Close()
+		g.listener = nil
+	}
+	if g.cmd != nil && g.cmd.Process != nil {
+		if err := g.cmd.Process.Kill(); err != nil {
+			log.Printf("[FaceGuard] Shutdown: kill error: %v", err)
+		} else {
+			log.Printf("[FaceGuard] Shutdown: face_guard.py (pid %d) killed", g.cmd.Process.Pid)
+		}
+		g.cmd = nil
+	}
+}
+
+// ==============================
 // Command Sending
 // ==============================
 
