@@ -7,6 +7,7 @@ import (
 
 	"passquantum/bridge"
 	"passquantum/core/crypto"
+	"passquantum/core/filevault"
 )
 
 const (
@@ -30,6 +31,8 @@ type AppState struct {
 	CurrentVault           string
 	StartupWarning         string
 	FaceGuard              *bridge.FaceGuard
+	FileStore              *filevault.Store
+	TempTracker            *filevault.TempTracker
 	// LockApp is called from any goroutine to lock the app immediately;
 	// it clears sensitive state and returns the user to the login screen.
 	LockApp func()
@@ -61,6 +64,14 @@ func (appState *AppState) StoreCurrentVaultState(vaultName string) {
 func (appState *AppState) ClearSensitiveState() {
 	appState.Mu.Lock()
 	defer appState.Mu.Unlock()
+
+	if appState.FileStore != nil {
+		appState.FileStore.Close()
+		appState.FileStore = nil
+	}
+	if appState.TempTracker != nil {
+		appState.TempTracker.CleanupAll()
+	}
 
 	crypto.WipeBytes(appState.SessionEncryptionKey)
 	crypto.WipeBytes(appState.SessionVerificationKey)

@@ -9,6 +9,7 @@ import (
 "github.com/cloudflare/circl/kem/kyber/kyber768"
 
 "passquantum/core/crypto"
+"passquantum/core/filevault"
 "passquantum/core/model"
 "passquantum/core/storage"
 securestorage "passquantum/internal/storage"
@@ -210,4 +211,41 @@ return result
 }
 
 return result
+}
+
+// InitFileStore creates (or re-opens) the file vault store for the current vault.
+// It also ensures a TempTracker exists on the appState.
+func InitFileStore(appState *AppState) error {
+if appState.CurrentVault == "" || appState.MasterPassword == "" {
+return fmt.Errorf("vault must be unlocked before initializing file store")
+}
+if appState.TempTracker == nil {
+appState.TempTracker = filevault.NewTempTracker()
+}
+store, err := filevault.NewStore(
+appState.CurrentVault,
+appState.MasterPassword,
+appState.PublicKey,
+appState.PrivateKey,
+appState.TempTracker,
+)
+if err != nil {
+return fmt.Errorf("failed to init file store: %w", err)
+}
+if appState.FileStore != nil {
+appState.FileStore.Close()
+}
+appState.FileStore = store
+return nil
+}
+
+// EntriesByType filters vault entries to a single type.
+func EntriesByType(entries []*model.VaultEntry, t model.EntryType) []*model.VaultEntry {
+var filtered []*model.VaultEntry
+for _, e := range entries {
+if e.Type == t {
+filtered = append(filtered, e)
+}
+}
+return filtered
 }

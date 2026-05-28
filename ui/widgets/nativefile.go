@@ -33,3 +33,39 @@ func PickImageFile(title string, onPicked func(path string), onErr func(err erro
 		fyne.Do(func() { onPicked(path) })
 	}()
 }
+
+// PickAnyFile opens an OS-native file dialog with no format restrictions.
+func PickAnyFile(title string, onPicked func(path string), onErr func(err error)) {
+	go func() {
+		path, err := zenity.SelectFile(
+			zenity.Title(title),
+		)
+		if err != nil {
+			if errors.Is(err, zenity.ErrCanceled) {
+				return
+			}
+			fyne.Do(func() { onErr(err) })
+			return
+		}
+		fyne.Do(func() { onPicked(path) })
+	}()
+}
+
+// PickSaveFile opens an OS-native save dialog with a default filename.
+func PickSaveFile(title, defaultName string, onPicked func(path string), onErr func(err error)) {
+	go func() {
+		path, err := zenity.SelectFileSave(
+			zenity.Title(title),
+			zenity.Filename(defaultName),
+			zenity.ConfirmOverwrite(),
+		)
+		if err != nil {
+			if errors.Is(err, zenity.ErrCanceled) {
+				return
+			}
+			fyne.Do(func() { onErr(err) })
+			return
+		}
+		fyne.Do(func() { onPicked(path) })
+	}()
+}

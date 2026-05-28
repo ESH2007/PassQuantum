@@ -100,7 +100,7 @@ func PageHeader(eyebrow, title, subtitle string, rightAction fyne.CanvasObject) 
 
 	var header fyne.CanvasObject
 	if rightAction != nil {
-		header = container.NewBorder(nil, nil, left, rightAction)
+		header = container.NewBorder(nil, nil, left, container.NewCenter(rightAction))
 	} else {
 		header = left
 	}
@@ -533,7 +533,7 @@ func CreatePrimaryButton(label string, onClick func()) fyne.CanvasObject {
 
 	bg := canvas.NewRectangle(ColorAccentCyan)
 	bg.CornerRadius = RadiusInput
-	bg.SetMinSize(fyne.NewSize(160, 36))
+	bg.SetMinSize(fyne.NewSize(0, 16))
 
 	txt := canvas.NewText(label, color.White)
 	txt.TextSize = 13

@@ -13,6 +13,7 @@ import (
 	pqapp "passquantum/app"
 	"passquantum/bridge"
 	"passquantum/core/crypto"
+	"passquantum/core/filevault"
 	securestorage "passquantum/internal/storage"
 	"passquantum/theme"
 	"passquantum/ui/screens"
@@ -26,6 +27,10 @@ func main() {
 		log.Printf("WARNING: failed to initialize secure vault directory: %v", err)
 	} else if err := securestorage.ValidateVaultPermissions(); err != nil {
 		log.Printf("WARNING: failed to validate vault permissions: %v", err)
+	}
+
+	if err := filevault.CleanupOrphans(); err != nil {
+		log.Printf("WARNING: failed to cleanup orphan temp files: %v", err)
 	}
 
 	// Route face_data.npy into the vault directory so it shares the same

@@ -53,6 +53,8 @@ func createVaultItemCard(index int, entry *model.VaultEntry, payload string, w f
 		return createNoteCard(index, entry, payload, w, fyneApp, appState)
 	case model.EntryTypeCard:
 		return createCardDetailsCard(index, entry, payload, w, fyneApp, appState)
+	case model.EntryTypeTOTP:
+		return createTOTPItemCard(index, entry, payload, w, fyneApp, appState)
 	}
 
 	if strings.HasPrefix(entry.Service, "NOTE:") {
@@ -60,6 +62,9 @@ func createVaultItemCard(index int, entry *model.VaultEntry, payload string, w f
 	}
 	if strings.HasPrefix(entry.Service, "CARD:") {
 		return createCardDetailsCard(index, entry, payload, w, fyneApp, appState)
+	}
+	if strings.HasPrefix(entry.Service, "TOTP:") {
+		return createTOTPItemCard(index, entry, payload, w, fyneApp, appState)
 	}
 	return createPasswordCard(index, entry, payload, w, fyneApp, appState)
 }

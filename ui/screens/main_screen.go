@@ -7,6 +7,7 @@ import (
 	"image"
 	"image/color"
 	_ "image/png"
+	"strconv"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -18,6 +19,7 @@ import (
 
 	"passquantum/app"
 	"passquantum/core/model"
+	"passquantum/core/totp"
 	"passquantum/strength"
 	"passquantum/theme"
 	"passquantum/ui/assets"
@@ -36,6 +38,8 @@ const (
 	NavViewGenerator
 	NavViewChecker
 	NavViewSettings
+	NavViewTOTP
+	NavViewFiles
 )
 
 // NavigationState tracks the current view
@@ -47,6 +51,7 @@ type NavigationState struct {
 	contentContainer *fyne.Container
 	sidebarContainer *fyne.Container
 	sidebarCollapsed bool
+	viewCleanup      func()
 }
 
 func ShowMainScreen(w fyne.Window, fyneApp fyne.App, appState *app.AppState) {
@@ -87,6 +92,10 @@ func (ns *NavigationState) breadcrumbs() []string {
 		return []string{base, "Analyzer"}
 	case NavViewSettings:
 		return []string{base, "Settings"}
+	case NavViewTOTP:
+		return []string{base, ns.appState.CurrentVault, "Authenticator"}
+	case NavViewFiles:
+		return []string{base, ns.appState.CurrentVault, "Files"}
 	default:
 		return []string{base}
 	}
@@ -146,6 +155,8 @@ func (ns *NavigationState) rebuildUI() {
 		{theme.IconVault, "Vaults", NavViewVaults, nil},
 		{theme.IconPlus, "Add item", NavViewAddItem, nil},
 		{theme.IconKey, "Items", NavViewItems, nil},
+		{theme.IconClock, "Authenticator", NavViewTOTP, nil},
+		{theme.IconFolder, "Files", NavViewFiles, nil},
 	}
 	toolsSection := []navEntry{
 		{theme.IconWand, "Generate", NavViewGenerator, nil},
@@ -225,6 +236,8 @@ func (ns *NavigationState) rebuildUI() {
 			makeIconBtn(theme.IconVault, NavViewVaults, nil),
 			makeIconBtn(theme.IconPlus, NavViewAddItem, nil),
 			makeIconBtn(theme.IconKey, NavViewItems, nil),
+			makeIconBtn(theme.IconClock, NavViewTOTP, nil),
+			makeIconBtn(theme.IconFolder, NavViewFiles, nil),
 			divider2,
 			makeIconBtn(theme.IconWand, NavViewGenerator, nil),
 			makeIconBtn(theme.IconShieldCheck, NavViewChecker, nil),
@@ -271,20 +284,24 @@ func (ns *NavigationState) rebuildUI() {
 		pills = append(pills, theme.StatusPill("Watching: ON", theme.PillOk))
 	}
 
-	topbar := theme.Topbar(ns.breadcrumbs(), pills)
+	//topbar := theme.Topbar(ns.breadcrumbs(), pills)
 
 	// Content area
 	ns.updateContent()
 
 	contentScroll := container.NewVScroll(ns.contentContainer)
 
-	mainLayout := container.NewBorder(topbar, nil, sidebarFixed, nil, contentScroll)
+	mainLayout := container.NewBorder(nil, nil, sidebarFixed, nil, contentScroll)
 
 	ns.sidebarContainer.Objects = []fyne.CanvasObject{mainLayout}
 	ns.sidebarContainer.Refresh()
 }
 
 func (ns *NavigationState) switchView(view NavView) {
+	if ns.viewCleanup != nil {
+		ns.viewCleanup()
+		ns.viewCleanup = nil
+	}
 	ns.currentView = view
 	crumbs := ns.breadcrumbs()
 	ns.window.SetTitle("PassQuantum — " + crumbs[len(crumbs)-1])
@@ -307,6 +324,10 @@ func (ns *NavigationState) updateContent() {
 		content = ns.createCheckerView()
 	case NavViewSettings:
 		content = ns.createSettingsView()
+	case NavViewTOTP:
+		content = ns.createTOTPView()
+	case NavViewFiles:
+		content = ns.createFilesView()
 	default:
 		content = ns.createItemsView()
 	}
@@ -435,8 +456,22 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 	cardCVVInput := widget.NewPasswordEntry()
 	cardCVVInput.PlaceHolder = "CVV"
 
-	itemTypes := []string{"Password", "Cyphered Note", "Card"}
-	activeItemType := 0 // 0=Password, 1=Note, 2=Card
+	// TOTP fields
+	totpIssuerInput := widget.NewEntry()
+	totpIssuerInput.PlaceHolder = "e.g. GitHub"
+	totpAccountInput := widget.NewEntry()
+	totpAccountInput.PlaceHolder = "user@example.com"
+	totpSecretInput := widget.NewEntry()
+	totpSecretInput.PlaceHolder = "Base32 secret (e.g. JBSWY3DPEHPK3PXP)"
+	totpAlgorithmSelect := widget.NewSelect([]string{"SHA1", "SHA256", "SHA512"}, nil)
+	totpAlgorithmSelect.SetSelected("SHA1")
+	totpDigitsSelect := widget.NewSelect([]string{"6", "7", "8"}, nil)
+	totpDigitsSelect.SetSelected("6")
+	totpPeriodSelect := widget.NewSelect([]string{"30", "60", "90"}, nil)
+	totpPeriodSelect.SetSelected("30")
+
+	itemTypes := []string{"Password", "Cyphered Note", "Card", "TOTP"}
+	activeItemType := 0 // 0=Password, 1=Note, 2=Card, 3=TOTP
 
 	passwordSection := container.NewVBox(
 		theme.FieldLabel("SERVICE", nil),
@@ -470,6 +505,20 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 		),
 	)
 
+	totpSection := container.NewVBox(
+		theme.FieldLabel("ISSUER", nil),
+		totpIssuerInput,
+		theme.FieldLabel("ACCOUNT", nil),
+		totpAccountInput,
+		theme.FieldLabel("SECRET (BASE32)", nil),
+		totpSecretInput,
+		container.NewGridWithColumns(3,
+			container.NewVBox(theme.FieldLabel("ALGORITHM", nil), totpAlgorithmSelect),
+			container.NewVBox(theme.FieldLabel("DIGITS", nil), totpDigitsSelect),
+			container.NewVBox(theme.FieldLabel("PERIOD (s)", nil), totpPeriodSelect),
+		),
+	)
+
 	var formContent *fyne.Container
 	var typeTabs fyne.CanvasObject
 	var buildTypeTabs func()
@@ -479,12 +528,15 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 		passwordSection.Hide()
 		noteSection.Hide()
 		cardSection.Hide()
+		totpSection.Hide()
 
 		switch idx {
 		case 1:
 			noteSection.Show()
 		case 2:
 			cardSection.Show()
+		case 3:
+			totpSection.Show()
 		default:
 			passwordSection.Show()
 		}
@@ -550,6 +602,30 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 			service = "CARD:" + cardNameInput.Text
 			username = cardTypeSelect.Selected
 			secret = string(cardJSON)
+		case "TOTP":
+			entryType = model.EntryTypeTOTP
+			if totpSecretInput.Text == "" || totpIssuerInput.Text == "" {
+				widgets.ShowAppError(fmt.Errorf("TOTP issuer and secret are required"), ns.window)
+				return
+			}
+			digits, _ := strconv.Atoi(totpDigitsSelect.Selected)
+			period, _ := strconv.Atoi(totpPeriodSelect.Selected)
+			params := &totp.TOTPParams{
+				Secret:    totpSecretInput.Text,
+				Algorithm: totp.Algorithm(totpAlgorithmSelect.Selected),
+				Digits:    digits,
+				Period:    period,
+				Issuer:    totpIssuerInput.Text,
+				Account:   totpAccountInput.Text,
+			}
+			if err := totp.Validate(params); err != nil {
+				widgets.ShowAppError(fmt.Errorf("invalid TOTP params: %w", err), ns.window)
+				return
+			}
+			totpJSON, _ := totp.Serialize(params)
+			service = "TOTP:" + totpIssuerInput.Text
+			username = totpAccountInput.Text
+			secret = string(totpJSON)
 		default:
 			if secret == "" {
 				widgets.ShowAppError(fmt.Errorf("password cannot be empty"), ns.window)
@@ -620,6 +696,9 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 				cardNumberInput.SetText("")
 				cardExpiryInput.SetText("")
 				cardCVVInput.SetText("")
+				totpIssuerInput.SetText("")
+				totpAccountInput.SetText("")
+				totpSecretInput.SetText("")
 				widgets.ShowAppInformation("Success", "Item saved successfully!", ns.window)
 			})
 		}()
@@ -634,6 +713,7 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 		passwordSection,
 		noteSection,
 		cardSection,
+		totpSection,
 	)
 
 	footer := theme.FormFooter("Encrypted on save: AES-256-GCM", cancelBtn, saveBtn)
@@ -1088,7 +1168,7 @@ func (ns *NavigationState) createItemsView() fyne.CanvasObject {
 	headerTitle.TextSize = 22
 	headerTitle.TextStyle = fyne.TextStyle{Bold: true}
 	headerLeft := container.NewVBox(eyebrow, headerTitle, countLabel)
-	headerRow := container.NewBorder(nil, nil, headerLeft, addItemBtn)
+	headerRow := container.NewBorder(nil, nil, headerLeft, container.NewCenter(addItemBtn))
 	headerDivider := canvas.NewRectangle(theme.ColorLine1)
 	headerDivider.SetMinSize(fyne.NewSize(0, 1))
 	header := container.NewVBox(

@@ -94,4 +94,19 @@ var (
 
 	IconExternalLink = svgIcon("external-link",
 		`<path d="M15 3h6v6M21 3l-9 9M19 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6"/>`)
+
+	IconClock = svgIcon("clock",
+		`<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>`)
+
+	IconQRCode = svgIcon("qr-code",
+		`<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="3" height="3"/><rect x="18" y="18" width="3" height="3"/><rect x="14" y="18" width="3" height="3"/>`)
+
+	IconFile = svgIcon("file",
+		`<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z"/><path d="M14 3v6h6"/>`)
+
+	IconFileUp = svgIcon("file-up",
+		`<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9Z"/><path d="M14 3v6h6M12 12v6M9 15l3-3 3 3"/>`)
+
+	IconFolder = svgIcon("folder",
+		`<path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.2 3.6a2 2 0 0 0-1.7-.9H4a2 2 0 0 0-2 2v13.4A2 2 0 0 0 4 20Z"/>`)
 )

@@ -14,6 +14,8 @@ const (
 	EntryTypePassword
 	EntryTypeNote
 	EntryTypeCard
+	EntryTypeTOTP
+	EntryTypeFile
 )
 
 // VaultEntry represents an encrypted entry stored in the vault.
@@ -282,6 +284,12 @@ func inferEntryType(service string) EntryType {
 	}
 	if strings.HasPrefix(s, "CARD:") {
 		return EntryTypeCard
+	}
+	if strings.HasPrefix(s, "TOTP:") {
+		return EntryTypeTOTP
+	}
+	if strings.HasPrefix(s, "FILE:") {
+		return EntryTypeFile
 	}
 	return EntryTypePassword
 }
