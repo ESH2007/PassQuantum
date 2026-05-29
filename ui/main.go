@@ -14,6 +14,7 @@ import (
 	"passquantum/bridge"
 	"passquantum/core/crypto"
 	"passquantum/core/filevault"
+	"passquantum/internal/browser"
 	securestorage "passquantum/internal/storage"
 	"passquantum/theme"
 	"passquantum/ui/screens"
@@ -96,12 +97,27 @@ func main() {
 		screens.PromptMasterPassword(w, myApp, appState)
 	}
 
+	// Browser extension API server
+	browserCfg, _ := browser.LoadConfig()
+	domainMap, _ := browser.NewDomainMap()
+	vaultSvc := browser.NewAppVaultService(appState, domainMap)
+	browserServer := browser.NewServer(vaultSvc, browserCfg)
+	browserServer.SetPairingCallback(func(token string) {
+		fyne.Do(func() {
+			screens.ShowPairingDialog(w, token)
+		})
+	})
+	if err := browserServer.Start(); err != nil {
+		log.Printf("[Browser] WARNING: could not start browser API server: %v", err)
+	}
+
 	screens.PromptMasterPassword(w, myApp, appState)
 
 	w.SetOnClosed(func() {
 		if appState.FaceGuard != nil {
 			appState.FaceGuard.Shutdown()
 		}
+		browserServer.Stop()
 	})
 
 	w.ShowAndRun()
