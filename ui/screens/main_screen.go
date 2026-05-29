@@ -637,7 +637,25 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 			}
 		}
 
-		go func() {
+		clearInputs := func() {
+			serviceInput.SetText("")
+			usernameInput.SetText("")
+			passwordInput.SetText("")
+			noteTitleInput.SetText("")
+			noteContentInput.SetText("")
+			cardNameInput.SetText("")
+			cardHolderInput.SetText("")
+			cardNumberInput.SetText("")
+			cardExpiryInput.SetText("")
+			cardCVVInput.SetText("")
+			totpIssuerInput.SetText("")
+			totpAccountInput.SetText("")
+			totpSecretInput.SetText("")
+		}
+
+		// writeEntry encrypts the secret and either appends a new entry or
+		// replaces the crypto fields of an existing one (keeping its ID).
+		writeEntry := func(replaceID uint64, replaceExisting bool, successMsg string) {
 			ns.appState.Mu.Lock()
 			defer ns.appState.Mu.Unlock()
 
@@ -666,19 +684,36 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 				return
 			}
 
-			entry := model.NewVaultEntry()
-			entry.KyberCiphertext = ct
-			entry.Nonce = nonce
-			entry.Ciphertext = ciphertext
-			entry.Type = entryType
-			entry.CardSubtype = cardSubtype
-			entry.Service = service
-			entry.Username = username
+			if replaceExisting {
+				var target *model.VaultEntry
+				for _, e := range entries {
+					if e != nil && e.ID == replaceID {
+						target = e
+						break
+					}
+				}
+				if target == nil {
+					fyne.Do(func() {
+						widgets.ShowAppError(fmt.Errorf("entry no longer exists; please retry"), ns.window)
+					})
+					return
+				}
+				target.KyberCiphertext = ct
+				target.Nonce = nonce
+				target.Ciphertext = ciphertext
+			} else {
+				entry := model.NewVaultEntry()
+				entry.KyberCiphertext = ct
+				entry.Nonce = nonce
+				entry.Ciphertext = ciphertext
+				entry.Type = entryType
+				entry.CardSubtype = cardSubtype
+				entry.Service = service
+				entry.Username = username
+				entries = append(entries, entry)
+			}
 
-			entries = append(entries, entry)
-
-			err = app.WriteVault(entries, vaultFile, ns.appState.MasterPassword)
-			if err != nil {
+			if err := app.WriteVault(entries, vaultFile, ns.appState.MasterPassword); err != nil {
 				fyne.Do(func() {
 					widgets.ShowAppError(fmt.Errorf("failed to save vault item: %v", err), ns.window)
 				})
@@ -686,21 +721,46 @@ func (ns *NavigationState) createPasswordsView() fyne.CanvasObject {
 			}
 
 			fyne.Do(func() {
-				serviceInput.SetText("")
-				usernameInput.SetText("")
-				passwordInput.SetText("")
-				noteTitleInput.SetText("")
-				noteContentInput.SetText("")
-				cardNameInput.SetText("")
-				cardHolderInput.SetText("")
-				cardNumberInput.SetText("")
-				cardExpiryInput.SetText("")
-				cardCVVInput.SetText("")
-				totpIssuerInput.SetText("")
-				totpAccountInput.SetText("")
-				totpSecretInput.SetText("")
-				widgets.ShowAppInformation("Success", "Item saved successfully!", ns.window)
+				clearInputs()
+				widgets.ShowAppInformation("Success", successMsg, ns.window)
 			})
+		}
+
+		go func() {
+			ns.appState.Mu.Lock()
+			vaultFile := app.GetVaultPath(ns.appState.CurrentVault)
+			entries, err := app.ReadVault(vaultFile, ns.appState.MasterPassword)
+			if err != nil {
+				ns.appState.Mu.Unlock()
+				fyne.Do(func() {
+					widgets.ShowAppError(fmt.Errorf("failed to read vault: %w", err), ns.window)
+				})
+				return
+			}
+
+			dup := app.FindDuplicateEntry(entries, entryType, service, username)
+			ns.appState.Mu.Unlock()
+
+			if dup != nil {
+				dupID := dup.ID
+				displayService := strings.TrimPrefix(service, "TOTP:")
+				fyne.Do(func() {
+					widgets.ShowAppConfirm(
+						"Replace existing entry?",
+						fmt.Sprintf("An entry for '%s' / '%s' already exists. Replace it?", displayService, username),
+						func(confirmed bool) {
+							if !confirmed {
+								return
+							}
+							go writeEntry(dupID, true, "Entry replaced successfully!")
+						},
+						ns.window,
+					)
+				})
+				return
+			}
+
+			writeEntry(0, false, "Item saved successfully!")
 		}()
 	})
 

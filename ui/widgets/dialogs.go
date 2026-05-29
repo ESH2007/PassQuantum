@@ -62,7 +62,43 @@ func ShowAppConfirm(title, message string, onResult func(bool), w fyne.Window) {
 	})
 }
 
+// ShowAppConfirmWithRemember is a confirm dialog with an extra "Don't ask again"
+// checkbox. The onResult callback receives both the confirm choice and whether
+// the user wants to remember it.
+func ShowAppConfirmWithRemember(title, message, rememberLabel string, onResult func(confirmed, remember bool), w fyne.Window) {
+	if w == nil {
+		return
+	}
+
+	rememberCheck := widget.NewCheck(rememberLabel, nil)
+
+	showAppDialogWithExtra(w, title, message, "?", theme.ColorWarning, rememberCheck, []appDialogAction{
+		{
+			label:   "No",
+			primary: false,
+			onTap: func() {
+				if onResult != nil {
+					onResult(false, rememberCheck.Checked)
+				}
+			},
+		},
+		{
+			label:   "Yes",
+			primary: true,
+			onTap: func() {
+				if onResult != nil {
+					onResult(true, rememberCheck.Checked)
+				}
+			},
+		},
+	})
+}
+
 func showAppDialog(w fyne.Window, title, message, glyph string, tone color.NRGBA, actions []appDialogAction) {
+	showAppDialogWithExtra(w, title, message, glyph, tone, nil, actions)
+}
+
+func showAppDialogWithExtra(w fyne.Window, title, message, glyph string, tone color.NRGBA, extra fyne.CanvasObject, actions []appDialogAction) {
 	if w == nil {
 		return
 	}
@@ -108,13 +144,16 @@ func showAppDialog(w fyne.Window, title, message, glyph string, tone color.NRGBA
 	divider := canvas.NewRectangle(theme.ColorLine1)
 	divider.SetMinSize(fyne.NewSize(0, 1))
 
-	content := container.NewVBox(
+	contentItems := []fyne.CanvasObject{
 		container.NewCenter(iconStack),
 		container.NewCenter(titleTxt),
 		messageLabel,
-		divider,
-		buttonBar,
-	)
+	}
+	if extra != nil {
+		contentItems = append(contentItems, extra)
+	}
+	contentItems = append(contentItems, divider, buttonBar)
+	content := container.NewVBox(contentItems...)
 
 	card := theme.CardWithHeader("", "", nil, content)
 	d = dialog.NewCustomWithoutButtons("", container.NewPadded(card), w)

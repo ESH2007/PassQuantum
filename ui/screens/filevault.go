@@ -9,6 +9,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"log"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -22,6 +23,10 @@ import (
 	"passquantum/theme"
 	"passquantum/ui/widgets"
 )
+
+// Preference key for the "delete source file after import" choice.
+// Values: "always" | "never" | "" (ask each time).
+const PrefDeleteSourceAfterImport = "pref_delete_source_after_import"
 
 func (ns *NavigationState) createFilesView() fyne.CanvasObject {
 	storeBtn := theme.CreatePrimaryButtonWithIcon("Store file", theme.IconFileUp, func() {
@@ -271,15 +276,64 @@ func (ns *NavigationState) pickAndStoreFile() {
 			fyne.Do(func() {
 				if err != nil {
 					widgets.ShowAppError(fmt.Errorf("store file: %w", err), ns.window)
-				} else {
-					widgets.ShowAppInformation("Stored", "File encrypted and stored in vault", ns.window)
-					ns.switchView(NavViewFiles)
+					return
 				}
+				widgets.ShowAppInformation("Stored", "File encrypted and stored in vault", ns.window)
+				ns.switchView(NavViewFiles)
+				ns.handleSourceFileCleanup(srcPath)
 			})
 		}()
 	}, func(err error) {
 		widgets.ShowAppError(err, ns.window)
 	})
+}
+
+// handleSourceFileCleanup deletes (or prompts to delete) the original
+// unencrypted source file after a successful encrypted store. Honors the
+// "always" / "never" / "ask" preference.
+func (ns *NavigationState) handleSourceFileCleanup(srcPath string) {
+	prefs := ns.app.Preferences()
+	choice := prefs.StringWithFallback(PrefDeleteSourceAfterImport, "")
+
+	switch choice {
+	case "always":
+		ns.deleteSourceFile(srcPath, false)
+		return
+	case "never":
+		return
+	}
+
+	// Ask the user
+	fileName := filepath.Base(srcPath)
+	widgets.ShowAppConfirmWithRemember(
+		"Delete source file?",
+		fmt.Sprintf("The encrypted copy is now in the vault, but the original '%s' is still on your disk in plain text. Delete it now?", fileName),
+		"Don't ask me again",
+		func(confirmed, remember bool) {
+			if remember {
+				if confirmed {
+					prefs.SetString(PrefDeleteSourceAfterImport, "always")
+				} else {
+					prefs.SetString(PrefDeleteSourceAfterImport, "never")
+				}
+			}
+			if confirmed {
+				ns.deleteSourceFile(srcPath, true)
+			}
+		},
+		ns.window,
+	)
+}
+
+func (ns *NavigationState) deleteSourceFile(srcPath string, notify bool) {
+	if err := os.Remove(srcPath); err != nil {
+		log.Printf("[FileVault] failed to delete source file %q: %v", srcPath, err)
+		widgets.ShowAppError(fmt.Errorf("could not delete source file: %w", err), ns.window)
+		return
+	}
+	if notify {
+		widgets.ShowAppInformation("Deleted", "Source file removed from disk", ns.window)
+	}
 }
 
 // ensureFileStore lazily initializes the file store if needed.

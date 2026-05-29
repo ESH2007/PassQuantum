@@ -249,3 +249,73 @@ filtered = append(filtered, e)
 }
 return filtered
 }
+
+// FindDuplicateEntry returns the first entry that matches the given type +
+// identifiers, or nil. Comparison is case-insensitive; for Service, domain
+// normalization is applied (so "github.com" == "https://github.com/login").
+//
+// For EntryTypeTOTP, the "TOTP:" prefix on Service is stripped before comparing,
+// so callers may pass either "GitHub" or "TOTP:GitHub" as service.
+//
+// Returns nil for types without a natural dedup key (Note, Card, File).
+func FindDuplicateEntry(
+entries []*model.VaultEntry,
+entryType model.EntryType,
+service, username string,
+) *model.VaultEntry {
+if entryType != model.EntryTypePassword && entryType != model.EntryTypeTOTP {
+return nil
+}
+
+wantService := normalizeServiceForCompare(service, entryType)
+wantUsername := strings.ToLower(strings.TrimSpace(username))
+
+for _, entry := range entries {
+if entry == nil || entry.Type != entryType {
+continue
+}
+gotService := normalizeServiceForCompare(entry.Service, entryType)
+gotUsername := strings.ToLower(strings.TrimSpace(entry.Username))
+if gotService == wantService && gotUsername == wantUsername {
+return entry
+}
+}
+return nil
+}
+
+// normalizeServiceForCompare prepares a service string for dedup comparison.
+// Strips the "TOTP:" prefix for TOTP entries, then case-folds and applies
+// best-effort domain normalization for URL-shaped services.
+func normalizeServiceForCompare(service string, entryType model.EntryType) string {
+s := strings.TrimSpace(service)
+if entryType == model.EntryTypeTOTP {
+s = strings.TrimPrefix(s, "TOTP:")
+s = strings.TrimPrefix(s, "totp:")
+}
+s = strings.ToLower(strings.TrimSpace(s))
+return normalizeDomainForCompare(s)
+}
+
+// normalizeDomainForCompare strips protocol, path, port and "www." prefix from
+// a service string that looks like a URL or hostname. Falls back to the
+// trimmed input for non-URL strings ("Gmail", "GitHub", etc.).
+//
+// Duplicated here (rather than imported from internal/browser) to avoid an
+// import cycle: internal/browser already imports passquantum/app.
+func normalizeDomainForCompare(raw string) string {
+raw = strings.TrimSpace(raw)
+if raw == "" {
+return ""
+}
+if idx := strings.Index(raw, "://"); idx >= 0 {
+raw = raw[idx+3:]
+}
+if idx := strings.IndexAny(raw, "/?#"); idx >= 0 {
+raw = raw[:idx]
+}
+if idx := strings.Index(raw, ":"); idx >= 0 {
+raw = raw[:idx]
+}
+raw = strings.TrimPrefix(raw, "www.")
+return raw
+}

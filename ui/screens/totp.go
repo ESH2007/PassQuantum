@@ -543,7 +543,30 @@ func (ns *NavigationState) showAddTOTPDialog() {
 			customDialog.Hide()
 		}
 
-		go func() {
+		// encryptTOTP builds a fresh TOTP entry from params. Returns ct, nonce,
+		// ciphertext suitable for either a new entry or replacing an existing
+		// entry's crypto fields.
+		encryptTOTP := func(params *totp.TOTPParams) (ct, nonce, ciphertext []byte, err error) {
+			totpJSON, err := totp.Serialize(params)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+			var ss []byte
+			ct, ss, err = app.Encapsulate(ns.appState.PublicKey)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("encapsulation failed: %w", err)
+			}
+			nonce, ciphertext, err = app.EncryptAES256GCM(string(totpJSON), ss)
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("encryption failed: %w", err)
+			}
+			return ct, nonce, ciphertext, nil
+		}
+
+		// writeBulk processes paramsList against the current vault entries,
+		// skipping duplicates (matching by Issuer + Account) and counting
+		// adds / skips. Used for bulk imports (Google Authenticator).
+		writeBulk := func() {
 			ns.appState.Mu.Lock()
 			defer ns.appState.Mu.Unlock()
 
@@ -556,31 +579,19 @@ func (ns *NavigationState) showAddTOTPDialog() {
 				return
 			}
 
+			added, skipped := 0, 0
 			for _, params := range paramsList {
-				totpJSON, err := totp.Serialize(params)
+				if app.FindDuplicateEntry(entries, model.EntryTypeTOTP, params.Issuer, params.Account) != nil {
+					skipped++
+					continue
+				}
+				ct, nonce, ciphertext, err := encryptTOTP(params)
 				if err != nil {
 					fyne.Do(func() {
 						widgets.ShowAppError(err, ns.window)
 					})
 					return
 				}
-
-				ct, ss, err := app.Encapsulate(ns.appState.PublicKey)
-				if err != nil {
-					fyne.Do(func() {
-						widgets.ShowAppError(fmt.Errorf("encapsulation failed: %v", err), ns.window)
-					})
-					return
-				}
-
-				nonce, ciphertext, err := app.EncryptAES256GCM(string(totpJSON), ss)
-				if err != nil {
-					fyne.Do(func() {
-						widgets.ShowAppError(fmt.Errorf("encryption failed: %v", err), ns.window)
-					})
-					return
-				}
-
 				entry := model.NewVaultEntry()
 				entry.Type = model.EntryTypeTOTP
 				entry.KyberCiphertext = ct
@@ -588,12 +599,11 @@ func (ns *NavigationState) showAddTOTPDialog() {
 				entry.Ciphertext = ciphertext
 				entry.Service = "TOTP:" + params.Issuer
 				entry.Username = params.Account
-
 				entries = append(entries, entry)
+				added++
 			}
 
-			err = app.WriteVault(entries, vaultFile, ns.appState.MasterPassword)
-			if err != nil {
+			if err := app.WriteVault(entries, vaultFile, ns.appState.MasterPassword); err != nil {
 				fyne.Do(func() {
 					widgets.ShowAppError(fmt.Errorf("failed to save: %v", err), ns.window)
 				})
@@ -601,13 +611,131 @@ func (ns *NavigationState) showAddTOTPDialog() {
 			}
 
 			fyne.Do(func() {
-				msg := "TOTP account added!"
-				if len(paramsList) > 1 {
-					msg = fmt.Sprintf("%d TOTP accounts imported!", len(paramsList))
+				var msg string
+				switch {
+				case added > 0 && skipped > 0:
+					msg = fmt.Sprintf("Added %d TOTP account(s). %d already existed and were skipped.", added, skipped)
+				case added > 0:
+					msg = fmt.Sprintf("%d TOTP account(s) imported!", added)
+				case skipped > 0:
+					msg = fmt.Sprintf("All %d account(s) already exist in this vault. Nothing was imported.", skipped)
+				default:
+					msg = "Nothing to import."
 				}
-				widgets.ShowAppInformation("Success", msg, ns.window)
+				widgets.ShowAppInformation("Import complete", msg, ns.window)
 				ns.switchView(NavViewTOTP)
 			})
+		}
+
+		// writeSingle adds or replaces a single TOTP entry.
+		writeSingle := func(params *totp.TOTPParams, replaceID uint64, replaceExisting bool) {
+			ns.appState.Mu.Lock()
+			defer ns.appState.Mu.Unlock()
+
+			vaultFile := app.GetVaultPath(ns.appState.CurrentVault)
+			entries, err := app.ReadVault(vaultFile, ns.appState.MasterPassword)
+			if err != nil {
+				fyne.Do(func() {
+					widgets.ShowAppError(fmt.Errorf("failed to read vault: %w", err), ns.window)
+				})
+				return
+			}
+
+			ct, nonce, ciphertext, err := encryptTOTP(params)
+			if err != nil {
+				fyne.Do(func() {
+					widgets.ShowAppError(err, ns.window)
+				})
+				return
+			}
+
+			if replaceExisting {
+				var target *model.VaultEntry
+				for _, e := range entries {
+					if e != nil && e.ID == replaceID {
+						target = e
+						break
+					}
+				}
+				if target == nil {
+					fyne.Do(func() {
+						widgets.ShowAppError(fmt.Errorf("entry no longer exists; please retry"), ns.window)
+					})
+					return
+				}
+				target.KyberCiphertext = ct
+				target.Nonce = nonce
+				target.Ciphertext = ciphertext
+			} else {
+				entry := model.NewVaultEntry()
+				entry.Type = model.EntryTypeTOTP
+				entry.KyberCiphertext = ct
+				entry.Nonce = nonce
+				entry.Ciphertext = ciphertext
+				entry.Service = "TOTP:" + params.Issuer
+				entry.Username = params.Account
+				entries = append(entries, entry)
+			}
+
+			if err := app.WriteVault(entries, vaultFile, ns.appState.MasterPassword); err != nil {
+				fyne.Do(func() {
+					widgets.ShowAppError(fmt.Errorf("failed to save: %v", err), ns.window)
+				})
+				return
+			}
+
+			fyne.Do(func() {
+				if replaceExisting {
+					widgets.ShowAppInformation("Updated", "TOTP account replaced!", ns.window)
+				} else {
+					widgets.ShowAppInformation("Success", "TOTP account added!", ns.window)
+				}
+				ns.switchView(NavViewTOTP)
+			})
+		}
+
+		if len(paramsList) > 1 {
+			// Bulk import: skip duplicates silently, summarize at the end
+			go writeBulk()
+			return
+		}
+
+		// Single-add: prompt to replace on duplicate
+		go func() {
+			params := paramsList[0]
+
+			ns.appState.Mu.Lock()
+			vaultFile := app.GetVaultPath(ns.appState.CurrentVault)
+			entries, err := app.ReadVault(vaultFile, ns.appState.MasterPassword)
+			if err != nil {
+				ns.appState.Mu.Unlock()
+				fyne.Do(func() {
+					widgets.ShowAppError(fmt.Errorf("failed to read vault: %w", err), ns.window)
+				})
+				return
+			}
+			dup := app.FindDuplicateEntry(entries, model.EntryTypeTOTP, params.Issuer, params.Account)
+			ns.appState.Mu.Unlock()
+
+			if dup != nil {
+				dupID := dup.ID
+				fyne.Do(func() {
+					widgets.ShowAppConfirm(
+						"Replace existing OTP?",
+						fmt.Sprintf("An OTP for '%s' / '%s' already exists. Replace it?", params.Issuer, params.Account),
+						func(confirmed bool) {
+							if !confirmed {
+								return
+							}
+							go writeSingle(params, dupID, true)
+						},
+						ns.window,
+					)
+				})
+				return
+			}
+
+			writeSingle(params, 0, false)
 		}()
 	})
 

@@ -253,7 +253,44 @@ func buildVaultSettings(w fyne.Window, fyneApp fyne.App, appState *app.AppState)
 		),
 	)
 
-	return container.NewVBox(vaultInfoCard, compactCard, backupCard)
+	// File vault — source-file deletion preference
+	const (
+		labelAsk    = "Ask each time"
+		labelAlways = "Always delete"
+		labelNever  = "Never delete"
+	)
+	prefs := fyneApp.Preferences()
+	current := prefs.StringWithFallback(PrefDeleteSourceAfterImport, "")
+	deleteSourceSelect := widget.NewSelect(
+		[]string{labelAsk, labelAlways, labelNever},
+		func(s string) {
+			switch s {
+			case labelAlways:
+				prefs.SetString(PrefDeleteSourceAfterImport, "always")
+			case labelNever:
+				prefs.SetString(PrefDeleteSourceAfterImport, "never")
+			default:
+				prefs.SetString(PrefDeleteSourceAfterImport, "")
+			}
+		},
+	)
+	switch current {
+	case "always":
+		deleteSourceSelect.SetSelected(labelAlways)
+	case "never":
+		deleteSourceSelect.SetSelected(labelNever)
+	default:
+		deleteSourceSelect.SetSelected(labelAsk)
+	}
+
+	fileVaultCard := theme.CardWithHeader("FILE VAULT", "Source file after import", nil,
+		container.NewBorder(nil, nil,
+			theme.MonoText("What to do with the original file once encrypted.", 11, theme.ColorFg2),
+			deleteSourceSelect,
+		),
+	)
+
+	return container.NewVBox(vaultInfoCard, compactCard, backupCard, fileVaultCard)
 }
 
 func buildDisplaySettings(w fyne.Window, fyneApp fyne.App, appState *app.AppState) *fyne.Container {

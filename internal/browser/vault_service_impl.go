@@ -115,6 +115,20 @@ func (s *appVaultService) SaveCredential(domain, username, password string) (uin
 		return 0, fmt.Errorf("encrypt: %w", err)
 	}
 
+	// Auto-update on duplicate: if an entry already exists for this
+	// domain + username, replace its crypto fields in place rather than
+	// creating a parallel duplicate entry.
+	if dup := pqapp.FindDuplicateEntry(entries, model.EntryTypePassword, domain, username); dup != nil {
+		dup.KyberCiphertext = ct
+		dup.Nonce = nonce
+		dup.Ciphertext = ciphertext
+		if err := pqapp.WriteVault(entries, vaultFile, s.state.MasterPassword); err != nil {
+			return 0, fmt.Errorf("write vault: %w", err)
+		}
+		_ = s.domainMap.Associate(domain, dup.ID)
+		return dup.ID, nil
+	}
+
 	entry := model.NewVaultEntry()
 	entry.Type = model.EntryTypePassword
 	entry.Service = domain
