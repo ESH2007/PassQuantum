@@ -40,6 +40,7 @@ const (
 	NavViewSettings
 	NavViewTOTP
 	NavViewFiles
+	NavViewImport
 )
 
 // NavigationState tracks the current view
@@ -96,6 +97,8 @@ func (ns *NavigationState) breadcrumbs() []string {
 		return []string{base, ns.appState.CurrentVault, "Authenticator"}
 	case NavViewFiles:
 		return []string{base, ns.appState.CurrentVault, "Files"}
+	case NavViewImport:
+		return []string{base, ns.appState.CurrentVault, "Import"}
 	default:
 		return []string{base}
 	}
@@ -157,6 +160,7 @@ func (ns *NavigationState) rebuildUI() {
 		{theme.IconKey, "Items", NavViewItems, nil},
 		{theme.IconClock, "Authenticator", NavViewTOTP, nil},
 		{theme.IconFolder, "Files", NavViewFiles, nil},
+		{theme.IconDownload, "Import", NavViewImport, nil},
 	}
 	toolsSection := []navEntry{
 		{theme.IconWand, "Generate", NavViewGenerator, nil},
@@ -238,6 +242,7 @@ func (ns *NavigationState) rebuildUI() {
 			makeIconBtn(theme.IconKey, NavViewItems, nil),
 			makeIconBtn(theme.IconClock, NavViewTOTP, nil),
 			makeIconBtn(theme.IconFolder, NavViewFiles, nil),
+			makeIconBtn(theme.IconDownload, NavViewImport, nil),
 			divider2,
 			makeIconBtn(theme.IconWand, NavViewGenerator, nil),
 			makeIconBtn(theme.IconShieldCheck, NavViewChecker, nil),
@@ -328,6 +333,8 @@ func (ns *NavigationState) updateContent() {
 		content = ns.createTOTPView()
 	case NavViewFiles:
 		content = ns.createFilesView()
+	case NavViewImport:
+		content = ns.createImportView()
 	default:
 		content = ns.createItemsView()
 	}

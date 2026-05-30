@@ -1,0 +1,5 @@
+url,username,password,totp,extra,name,grouping,fav
+https://github.com,octocat,ghpw!,,personal repo,GitHub,Dev,0
+https://mail.google.com,alice@example.com,gmailpw,JBSWY3DPEHPK3PXP,work account,Gmail Work,Email,1
+http://sn,,,,My SSH key passphrase is BLAH,Secure Note 1,Notes,0
+https://twitter.com,birdperson,twpw123,,,Twitter,,0

@@ -1,0 +1,6 @@
+name,url,username,password,note
+GitHub,https://github.com,octocat,hunter2pass!,Personal account
+Gmail,https://mail.google.com,alice@example.com,alicepw123,
+Reddit,https://reddit.com,throwaway_42,r3dditP@ss,Burner account
+Empty Row,,,,
+"Site, with, commas","https://example.com","u,ser","p,a,s,s","note, with comma"

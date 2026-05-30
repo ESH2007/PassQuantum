@@ -1,0 +1,4 @@
+"url","username","password","httpRealm","formActionOrigin","guid","timeCreated","timeLastUsed","timePasswordChanged"
+"https://accounts.google.com","bob@example.com","bobpw!","","https://accounts.google.com","{abc-123}","1700000000000","1700100000000","1700050000000"
+"https://reddit.com","cool_user","cooluserpw","","https://reddit.com","{def-456}","1700200000000","1700300000000","1700250000000"
+"https://www.example.com","","","Example Realm","","{ghi-789}","1700400000000","1700400000000","1700400000000"

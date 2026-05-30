@@ -1,0 +1,60 @@
+{
+  "encrypted": false,
+  "folders": [
+    { "id": "f1", "name": "Dev" },
+    { "id": "f2", "name": "Email" }
+  ],
+  "items": [
+    {
+      "type": 1,
+      "name": "GitHub",
+      "notes": "Personal repo",
+      "folderId": "f1",
+      "favorite": false,
+      "fields": [{ "name": "recovery_code", "value": "abc-def", "type": 0 }],
+      "login": {
+        "username": "octocat",
+        "password": "ghpw!",
+        "totp": "",
+        "uris": [{ "match": null, "uri": "https://github.com" }]
+      }
+    },
+    {
+      "type": 1,
+      "name": "Gmail",
+      "notes": "",
+      "folderId": "f2",
+      "favorite": true,
+      "fields": [],
+      "login": {
+        "username": "alice@example.com",
+        "password": "gmailpw",
+        "totp": "JBSWY3DPEHPK3PXP",
+        "uris": [{ "match": null, "uri": "https://mail.google.com" }]
+      }
+    },
+    {
+      "type": 2,
+      "name": "SSH key",
+      "notes": "Passphrase is BLAH",
+      "folderId": null,
+      "favorite": false,
+      "fields": []
+    },
+    {
+      "type": 3,
+      "name": "My Visa",
+      "notes": "Backup card",
+      "folderId": null,
+      "favorite": false,
+      "card": {
+        "cardholderName": "Alice Doe",
+        "brand": "Visa",
+        "number": "4111111111111111",
+        "expMonth": "12",
+        "expYear": "2027",
+        "code": "123"
+      }
+    }
+  ]
+}

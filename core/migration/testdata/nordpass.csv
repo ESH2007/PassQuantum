@@ -1,0 +1,4 @@
+name,url,username,password,note,cardholdername,cardnumber,cvc,expirydate,zipcode,folder,full_name,phone_number,email,address1,address2,city,country,state,type
+GitHub,https://github.com,octocat,ghpw!,,,,,,,Dev,,,,,,,,,password
+My Visa,,,,Backup card,Alice Doe,4111111111111111,123,12/27,12345,Cards,,,,,,,,,credit_card
+Note 1,,,,My SSH passphrase is BLAH,,,,,,Notes,,,,,,,,,secure_note

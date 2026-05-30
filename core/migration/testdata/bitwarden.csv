@@ -1,0 +1,4 @@
+folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp
+Dev,0,login,GitHub,Personal,,0,https://github.com,octocat,ghpw!,
+Email,1,login,Gmail,,,,https://mail.google.com,alice@example.com,gmailpw,JBSWY3DPEHPK3PXP
+Notes,0,note,SSH key,Passphrase is BLAH,,0,,,,

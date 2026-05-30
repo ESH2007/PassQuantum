@@ -1,0 +1,35 @@
+Websites
+
+Website name: GitHub
+Website URL: https://github.com
+Login name: personal
+Login: octocat
+Password: ghpw
+Comment: Personal repo
+
+---
+
+Website name: Gmail
+Website URL: https://mail.google.com
+Login: alice@example.com
+Password: gmailpw
+Comment: Work account
+with multiple lines
+
+---
+
+Applications
+
+Application name: Slack
+Login: alice
+Password: slackpw
+Comment:
+
+---
+
+Notes
+
+Name: SSH Key
+Text: My SSH passphrase is BLAH
+
+---

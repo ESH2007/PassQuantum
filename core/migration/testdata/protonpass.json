@@ -1,0 +1,84 @@
+{
+  "version": "1.0.0",
+  "vaults": {
+    "vault-1": {
+      "name": "Personal",
+      "description": "main",
+      "items": [
+        {
+          "itemId": "item-1",
+          "createTime": 1700000000,
+          "modifyTime": 1700100000,
+          "state": 1,
+          "data": {
+            "type": "login",
+            "metadata": { "name": "GitHub", "note": "Personal repo" },
+            "content": {
+              "username": "",
+              "password": "ghpw!",
+              "urls": ["https://github.com"],
+              "totpUri": "",
+              "itemEmail": "octocat@example.com"
+            },
+            "extraFields": []
+          }
+        },
+        {
+          "itemId": "item-2",
+          "createTime": 1700200000,
+          "modifyTime": 1700300000,
+          "state": 1,
+          "data": {
+            "type": "login",
+            "metadata": { "name": "Gmail", "note": "" },
+            "content": {
+              "username": "alice@example.com",
+              "password": "gmailpw",
+              "urls": ["https://mail.google.com"],
+              "totpUri": "otpauth://totp/Gmail:alice@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Gmail",
+              "itemEmail": ""
+            },
+            "extraFields": []
+          }
+        },
+        {
+          "itemId": "item-3",
+          "createTime": 1700400000,
+          "modifyTime": 1700400000,
+          "state": 2,
+          "data": {
+            "type": "login",
+            "metadata": { "name": "Trashed", "note": "" },
+            "content": { "username": "x", "password": "y", "urls": [], "totpUri": "", "itemEmail": "" }
+          }
+        },
+        {
+          "itemId": "item-4",
+          "createTime": 1700500000,
+          "modifyTime": 1700500000,
+          "state": 1,
+          "data": {
+            "type": "note",
+            "metadata": { "name": "SSH key", "note": "Passphrase is BLAH" },
+            "content": {}
+          }
+        }
+      ]
+    },
+    "vault-2": {
+      "name": "Recycle Bin",
+      "description": "trash",
+      "items": [
+        {
+          "itemId": "item-5",
+          "state": 1,
+          "data": {
+            "type": "login",
+            "metadata": { "name": "Should be skipped", "note": "" },
+            "content": { "username": "u", "password": "p", "urls": [], "totpUri": "", "itemEmail": "" }
+          }
+        }
+      ]
+    }
+  }
+}
