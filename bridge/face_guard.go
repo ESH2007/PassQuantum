@@ -8,7 +8,7 @@ package bridge
 // Go side: process lifecycle, TCP message parsing, and callback dispatch.
 //
 // Protocol messages received from Python:
-//   FRAME:<base64 JPEG>      — live camera frame (training only)
+//   FRAME:<base64 JPEG>      — live camera frame (training and demo modes)
 //   PROGRESS:<n>/<total>     — training progress
 //   TRAINING_DONE            — all face samples saved
 //   FACE_OK                  — recognised face reappeared after FACE_LOST
@@ -17,6 +17,9 @@ package bridge
 // Commands sent to Python:
 //   START_TRAINING
 //   START_MONITOR
+//   START_DEMO               — pause monitoring; stream annotated landmark/blink
+//                             frames for the Security-settings visualizer
+//   STOP_DEMO                — leave demo mode and resume monitoring
 
 import (
 	"bufio"
@@ -162,6 +165,7 @@ func buildPythonCommand(script string) (*exec.Cmd, error) {
 			} else {
 				cmd.Dir = filepath.Dir(bundlePath)
 			}
+			setParentDeathSignal(cmd)
 			return cmd, nil
 		}
 	}
@@ -179,6 +183,7 @@ func buildPythonCommand(script string) (*exec.Cmd, error) {
 			} else {
 				cmd.Dir = filepath.Dir(scriptPath)
 			}
+			setParentDeathSignal(cmd)
 			return cmd, nil
 		}
 	}

@@ -9,7 +9,7 @@ Internals now use MediaPipe Tasks FaceLandmarker + geometric encoding
 instead of dlib / face_recognition.  The wire protocol to Go is unchanged.
 
 Protocol (Python → Go):
-  FRAME:<base64-encoded JPEG>       — live camera frame (training mode only)
+  FRAME:<base64-encoded JPEG>       — live camera frame (training / demo modes)
   PROGRESS:<current>/<total>        — training progress
   TRAINING_DONE                     — all samples captured and saved
   FACE_OK                           — known face reappeared after FACE_LOST
@@ -18,12 +18,17 @@ Protocol (Python → Go):
 Protocol (Go → Python):
   START_TRAINING                    — begin capturing face samples
   START_MONITOR                     — enter continuous monitor loop
+  START_DEMO                        — pause monitoring; stream annotated frames
+                                      (478 landmarks + blink HUD) for the
+                                      Security-settings visualizer
+  STOP_DEMO                         — leave demo mode and resume monitoring
 """
 
 import base64
 import os
 import socket
 import sys
+import threading
 import time
 from datetime import datetime
 from typing import List, Optional
@@ -32,7 +37,12 @@ import cv2
 import numpy as np
 
 from geometric_encoder import Encoder
-from liveness_detector import LivenessDetector
+from liveness_detector import (
+    LivenessDetector,
+    _LEFT_EYE_IDX,
+    _RIGHT_EYE_IDX,
+    EAR_THRESHOLD,
+)
 
 # ==============================
 # Constants
@@ -52,6 +62,12 @@ FRAME_WIDTH = 320
 FRAME_HEIGHT = 240
 LIVENESS_BLINKS_REQUIRED = 1    # blinks needed to pass anti-spoofing check
 LIVENESS_WINDOW_SECONDS  = 10.0 # seconds allowed per liveness gate attempt
+
+# Detection visualizer (Security-settings demo): larger frame than the monitor
+# preview so all 478 landmark dots stay legible, and a higher frame rate.
+DEMO_FRAME_WIDTH  = 480
+DEMO_FRAME_HEIGHT = 360
+DEMO_INTERVAL     = 0.04        # seconds between demo frames (~25 fps)
 
 # ==============================
 # Logging Helpers
@@ -139,12 +155,16 @@ def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 # ==============================
 
 
-def encode_frame_b64(frame_bgr: np.ndarray) -> str:
+def encode_frame_b64(
+    frame_bgr: np.ndarray,
+    width: int = FRAME_WIDTH,
+    height: int = FRAME_HEIGHT,
+) -> str:
     """
-    Resize frame to FRAME_WIDTH x FRAME_HEIGHT, encode as JPEG at FRAME_QUALITY,
+    Resize frame to width x height, encode as JPEG at FRAME_QUALITY,
     and return as a base64 string (no newlines).
     """
-    resized = cv2.resize(frame_bgr, (FRAME_WIDTH, FRAME_HEIGHT))
+    resized = cv2.resize(frame_bgr, (width, height))
     success, buf = cv2.imencode(
         ".jpg", resized, [cv2.IMWRITE_JPEG_QUALITY, FRAME_QUALITY]
     )
@@ -328,6 +348,112 @@ def _liveness_gate(
         liveness.close()
 
 
+# ==============================
+# Detection Visualizer (Demo Mode)
+# ==============================
+
+
+class _MonitorCommands:
+    """Thread-safe flags set by the background command listener during monitoring.
+
+    Once monitoring begins a single daemon thread owns the socket reader and
+    translates incoming commands into these flags; the monitor loop polls them.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._demo_active = False
+
+    def set_demo(self, active: bool) -> None:
+        with self._lock:
+            self._demo_active = active
+
+    def demo_active(self) -> bool:
+        with self._lock:
+            return self._demo_active
+
+
+def _command_listener(reader, commands: "_MonitorCommands") -> None:
+    """Read commands from Go during monitor mode and update shared flags.
+
+    Runs as a daemon thread.  This is the only socket reader once monitoring has
+    started, so there is no contention with the monitor loop.  Exits when the
+    connection closes (the ``for line in reader`` iterator ends).
+    """
+    for line in reader:
+        cmd = line.strip()
+        if cmd == "START_DEMO":
+            commands.set_demo(True)
+            log("Demo mode requested — pausing monitor.")
+        elif cmd == "STOP_DEMO":
+            commands.set_demo(False)
+            log("Demo mode stopped — resuming monitor.")
+        elif cmd in ("START_MONITOR", "START_TRAINING"):
+            # Benign duplicates: the UI dispatches START_MONITOR from several
+            # places (unlock, main screen) and we already entered monitor mode.
+            pass
+        elif cmd:
+            log(f"Ignoring unexpected command during monitor: {cmd!r}")
+    log("Command listener: connection closed.")
+
+
+def run_demo(
+    sock: socket.socket,
+    cap: cv2.VideoCapture,
+    commands: "_MonitorCommands",
+) -> None:
+    """Detection visualizer sub-loop for the Security-settings dialog.
+
+    Streams annotated FRAME messages — all 478 MediaPipe landmarks drawn as
+    dots (eye landmarks highlighted) plus a HUD showing blink count, live EAR,
+    and eyes open/closed — until STOP_DEMO clears the demo flag.  Reuses the
+    monitor's already-open camera handle so only one process owns the webcam.
+    """
+    log("Demo mode started.")
+    detector = LivenessDetector()
+    try:
+        while commands.demo_active():
+            frame = read_frame(cap)
+            if frame is None:
+                time.sleep(0.05)
+                continue
+
+            # Work at demo resolution so the dots stay legible after encoding.
+            frame = cv2.resize(frame, (DEMO_FRAME_WIDTH, DEMO_FRAME_HEIGHT))
+            avg_ear = detector.update(frame)
+            lm = detector.last_landmarks
+            h, w = frame.shape[:2]
+
+            if lm is not None:
+                # All 478 landmarks as small soft-yellow dots.
+                for p in lm:
+                    cv2.circle(frame, (int(p.x * w), int(p.y * h)), 1, (80, 220, 220), -1)
+                # Eye landmarks used for the EAR blink test, highlighted larger.
+                for idx in (*_LEFT_EYE_IDX, *_RIGHT_EYE_IDX):
+                    p = lm[idx]
+                    cv2.circle(frame, (int(p.x * w), int(p.y * h)), 3, (0, 255, 0), -1)
+
+            # HUD: blink count, live EAR, and eyes open/closed.
+            eyes_closed = avg_ear is not None and avg_ear < EAR_THRESHOLD
+            ear_text = f"{avg_ear:.2f}" if avg_ear is not None else "--"
+            eyes_text = "no face" if avg_ear is None else ("CLOSED" if eyes_closed else "OPEN")
+            hud_color = (0, 165, 255) if eyes_closed else (0, 255, 0)
+            cv2.putText(frame, f"Blinks: {detector.blink_count}", (10, 24),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv2.LINE_AA)
+            cv2.putText(frame, f"EAR: {ear_text}", (10, 48),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv2.LINE_AA)
+            cv2.putText(frame, f"Eyes: {eyes_text}", (10, 72),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, hud_color, 2, cv2.LINE_AA)
+
+            b64 = encode_frame_b64(frame, DEMO_FRAME_WIDTH, DEMO_FRAME_HEIGHT)
+            if b64:
+                send_line(sock, f"FRAME:{b64}")
+            time.sleep(DEMO_INTERVAL)
+    finally:
+        detector.close()
+    log("Demo mode ended.")
+
+
 def run_monitor(sock: socket.socket, reader, known_encodings: List[np.ndarray]) -> None:
     """
     Monitor mode:
@@ -336,7 +462,9 @@ def run_monitor(sock: socket.socket, reader, known_encodings: List[np.ndarray]) 
       - Detect faces; compare against known_encodings using cosine similarity.
       - If no known face seen for GRACE_SECONDS, send FACE_LOST (once per absence).
       - When known face returns after a FACE_LOST event, send FACE_OK.
-      - Does NOT send FRAME messages.
+      - Does NOT send FRAME messages (except while a demo session is active).
+      - On START_DEMO, pause monitoring and stream annotated frames via
+        run_demo() until STOP_DEMO; then resume with a fresh grace window.
     """
     log("Waiting for START_MONITOR command...")
     for line in reader:
@@ -352,11 +480,27 @@ def run_monitor(sock: socket.socket, reader, known_encodings: List[np.ndarray]) 
     # Anti-spoofing: confirm a live, recognized face before entering the main loop
     _liveness_gate(cap, encoder, known_encodings)
 
+    # From here on, a background daemon thread is the sole socket reader: it turns
+    # incoming START_DEMO / STOP_DEMO commands into flags the loop below polls.
+    commands = _MonitorCommands()
+    threading.Thread(
+        target=_command_listener, args=(reader, commands), daemon=True
+    ).start()
+
     last_seen: float = time.time()
     face_lost_sent: bool = False
 
     try:
         while True:
+            # Detection visualizer requested — hand the camera to the demo loop,
+            # then resume monitoring with a fresh grace window so we don't fire
+            # FACE_LOST immediately after the dialog closes.
+            if commands.demo_active():
+                run_demo(sock, cap, commands)
+                last_seen = time.time()
+                face_lost_sent = False
+                continue
+
             frame = read_frame(cap)
             if frame is None:
                 log("WARNING: Failed to read frame during monitoring.")

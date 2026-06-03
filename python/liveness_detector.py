@@ -89,6 +89,12 @@ class LivenessDetector:
         self._below_count: int = 0
         self._timestamp_ms: int = 0
 
+        # Last detected face landmarks (NormalizedLandmark list) and EAR, exposed
+        # so callers such as the Security-settings visualizer can draw the points
+        # without running a second FaceLandmarker. None when no face was found.
+        self.last_landmarks = None
+        self.last_ear: Optional[float] = None
+
         options = _mp_vision.FaceLandmarkerOptions(
             base_options=_mp_python.BaseOptions(model_asset_path=model_path),
             running_mode=_mp_vision.RunningMode.VIDEO,
@@ -111,12 +117,17 @@ class LivenessDetector:
         result = self._landmarker.detect_for_video(mp_image, self._timestamp_ms)
 
         if not result.face_landmarks:
+            self.last_landmarks = None
+            self.last_ear = None
             return None
 
         lm = result.face_landmarks[0]
         left_ear  = _ear(lm, _LEFT_EYE_IDX,  w, h)
         right_ear = _ear(lm, _RIGHT_EYE_IDX, w, h)
         avg_ear   = (left_ear + right_ear) / 2.0
+
+        self.last_landmarks = lm
+        self.last_ear = avg_ear
 
         if avg_ear < self.ear_threshold:
             self._below_count += 1

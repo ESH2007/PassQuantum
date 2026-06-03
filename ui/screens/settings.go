@@ -208,7 +208,92 @@ func buildSecuritySettings(w fyne.Window, fyneApp fyne.App, appState *app.AppSta
 		),
 	)
 
-	return container.NewVBox(masterPwCard, guardCard)
+	// ── Detection visualizer ──────────────────────────────────────────────
+	// Lets the user see the live MediaPipe landmarks and blink detection that
+	// drive Presence Guard. Only available once a face is enrolled and the
+	// guard subprocess is running.
+	var visualizerBody fyne.CanvasObject
+	if appState.FaceGuard != nil && faceDataExists() {
+		openBtn := theme.CreateDefaultButton("Open visualizer", func() {
+			showFaceVisualizerDialog(w, appState)
+		})
+		visualizerBody = container.NewBorder(nil, nil,
+			container.NewVBox(
+				theme.MonoText("Watch the live face mesh and blink detection that power Presence Guard.", 11, theme.ColorFg2),
+			),
+			openBtn,
+		)
+	} else {
+		visualizerBody = theme.MonoText("Register a face first to use the detection visualizer.", 11, theme.ColorFg2)
+	}
+
+	visualizerCard := theme.CardWithHeader("FACE DETECTION", "Detection visualizer", nil, visualizerBody)
+
+	return container.NewVBox(masterPwCard, guardCard, visualizerCard)
+}
+
+// showFaceVisualizerDialog opens a modal showing the live camera feed annotated
+// with all 478 MediaPipe landmarks (eye points highlighted) plus a HUD with the
+// blink count and Eye Aspect Ratio. It drives the Python demo mode via
+// START_DEMO / STOP_DEMO, which pauses presence monitoring while open (only one
+// process can own the webcam) and resumes it on close.
+func showFaceVisualizerDialog(w fyne.Window, appState *app.AppState) {
+	guard := appState.FaceGuard
+	if guard == nil {
+		widgets.ShowAppWarning("Unavailable", "Face detection is not running.", w)
+		return
+	}
+
+	// Camera preview, sized to match the Python demo frame (480×360).
+	blankImg := image.NewNRGBA(image.Rect(0, 0, 480, 360))
+	camImage := canvas.NewImageFromImage(blankImg)
+	camImage.FillMode = canvas.ImageFillContain
+	camImage.SetMinSize(fyne.NewSize(480, 360))
+
+	notice := theme.WarningBanner(
+		"PRESENCE PROTECTION PAUSED",
+		"Auto-lock is paused while this window is open. Monitoring resumes when you close it.",
+	)
+
+	caption := theme.MonoText(
+		"Live MediaPipe output — 478 face landmarks; green dots are the eye points used for blink detection.",
+		11, theme.ColorFg2,
+	)
+
+	content := container.NewVBox(
+		notice,
+		container.NewCenter(camImage),
+		caption,
+	)
+
+	// Defensively pause auto-lock while the visualizer is open. The demo loop
+	// already suppresses FACE_LOST, but the IsTraining flag guards the global
+	// OnLost handler too.
+	appState.Mu.Lock()
+	appState.IsTraining = true
+	appState.Mu.Unlock()
+
+	// Wire OnFrame before requesting the demo so no frames are missed. The
+	// callback runs on the Listen() goroutine, so UI work goes through fyne.Do.
+	guard.OnFrame = func(img image.Image) {
+		fyne.Do(func() {
+			camImage.Image = img
+			camImage.Refresh()
+		})
+	}
+
+	d := dialog.NewCustom("Face detection visualizer", "Close", content, w)
+	d.SetOnClosed(func() {
+		guard.OnFrame = nil
+		// SendCommand can block until Python is connected — never on the UI thread.
+		go guard.SendCommand("STOP_DEMO")
+		appState.Mu.Lock()
+		appState.IsTraining = false
+		appState.Mu.Unlock()
+	})
+
+	go guard.SendCommand("START_DEMO")
+	d.Show()
 }
 
 func buildVaultSettings(w fyne.Window, fyneApp fyne.App, appState *app.AppState) *fyne.Container {

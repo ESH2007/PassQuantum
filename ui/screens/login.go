@@ -181,6 +181,6 @@ func faceDataExists() bool {
 	if workDir == "" {
 		return false
 	}
-	_, err := os.Stat(filepath.Join(workDir, "face_data.pkl"))
+	_, err := os.Stat(filepath.Join(workDir, "face_data.npy"))
 	return err == nil
 }

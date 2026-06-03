@@ -3,7 +3,10 @@ package main
 import (
 	"log"
 	"os"
+	"os/signal"
 	"strings"
+	"sync"
+	"syscall"
 
 	"fyne.io/fyne/v2"
 	fyneapp "fyne.io/fyne/v2/app"
@@ -111,14 +114,39 @@ func main() {
 
 	screens.PromptMasterPassword(w, myApp, appState)
 
-	w.SetOnClosed(func() {
-		if appState.FaceGuard != nil {
-			appState.FaceGuard.Shutdown()
-		}
-		browserServer.Stop()
-	})
+	// cleanup releases the webcam (by killing face_guard.py) and stops the
+	// browser server. Guarded by sync.Once so it is safe to invoke from every
+	// exit path without double-running.
+	var cleanupOnce sync.Once
+	cleanup := func() {
+		cleanupOnce.Do(func() {
+			if appState.FaceGuard != nil {
+				appState.FaceGuard.Shutdown()
+			}
+			browserServer.Stop()
+		})
+	}
+
+	// Window-close (X) fires this before Run() returns.
+	w.SetOnClosed(cleanup)
+
+	// Ctrl+C / SIGTERM unwind the process without returning from ShowAndRun,
+	// so clean up here before exiting.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		log.Println("Received termination signal — shutting down.")
+		cleanup()
+		os.Exit(0)
+	}()
 
 	w.ShowAndRun()
+
+	// Runs when the Fyne event loop exits — crucially including the "Lock vault"
+	// button, which calls app.Quit() and does NOT trigger SetOnClosed. Without
+	// this, face_guard.py would be orphaned and keep the webcam open.
+	cleanup()
 }
 
 // normalizeLocaleForFyne avoids startup locale parse failures when environments use
