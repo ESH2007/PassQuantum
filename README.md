@@ -33,6 +33,9 @@ This README reflects the current code in `new-passquantum/`, including generated
 | `ui/face_guard_bundle.exe` | PyInstaller output used for self-contained Windows builds |
 | `build/windows/PassQuantum.exe` | Windows build output from `Build-FaceBundle.ps1` |
 | `build/linux/PassQuantum` | Native Linux build output |
+| `build/mac/PassQuantum.app` | macOS application bundle |
+| `build/mac/PassQuantum.dmg` | macOS distributable disk image |
+| `build-mac-native.sh` | Native macOS build script |
 
 ## Repository layout
 
@@ -105,6 +108,47 @@ The embedded bundle is extracted at runtime to:
 %TEMP%\passquantum-face-guard\face_guard.exe
 ```
 
+### macOS native build (Apple Silicon / Intel)
+
+Build a fully self-contained, ad-hoc-signed `.app` and `.dmg` directly on a Mac:
+
+```bash
+./build-mac-native.sh
+# or, equivalently:
+./build.sh mac
+```
+
+Prerequisites:
+
+- Go 1.22+
+- Python 3.11+
+- Xcode Command Line Tools (`xcode-select --install`)
+
+What it does:
+
+1. Creates or reuses `.venv-faceguard` (isolated from `.venv`)
+2. Installs `pyinstaller`, `mediapipe`, `opencv-python-headless`, and `numpy<2`
+3. Builds the native `face_guard_bundle` with PyInstaller `--onedir`
+4. Packages `build/mac/PassQuantum.app` with `fyne package -os darwin`
+5. Copies the helper **inside** the bundle at `Contents/Resources/faceguard/`
+6. Injects `NSCameraUsageDescription` into the app's `Info.plist`
+7. Ad-hoc code signs the `.app` (including the in-bundle helper), then creates and signs `build/mac/PassQuantum.dmg`
+
+Outputs:
+
+- `build/mac/PassQuantum.app` — application bundle (embedded face guard, camera permission declared)
+- `build/mac/PassQuantum.dmg` — distributable disk image
+
+The architecture is detected automatically (`arm64` → Apple Silicon, `x86_64` → Intel).
+Because the DMG is **ad-hoc signed** (not notarized), users may need to right-click → Open
+on first launch — see [macOS: First launch](#macos-first-launch) below. Flags
+`--skip-bundle`, `--skip-sign`, and `--skip-dmg` are available; run with `--help` for
+details. Unlike Linux/Windows (which embed the helper via `go:embed` and extract it to a
+temp dir), macOS ships the face-guard helper **inside** the signed `.app` and runs it in
+place — this is required so the camera permission (TCC) attributes to PassQuantum. If the
+camera was previously denied during testing, reset its decision with
+`tccutil reset Camera com.passquantum.app`.
+
 ### Cross-platform script
 
 `build.sh` provides:
@@ -118,7 +162,25 @@ Important notes:
 
 - Linux can embed the PyInstaller face bundle into the Go binary.
 - Windows cross-builds can create a Windows PyInstaller bundle through Docker + Wine.
-- macOS currently ships Python sources and models alongside the app rather than an embedded PyInstaller bundle.
+- On a Mac, `./build.sh mac` delegates to `build-mac-native.sh`, producing a self-contained
+  `.app`/`.dmg` with the PyInstaller face bundle embedded (see the macOS native build above).
+- On Linux, `./build.sh mac` still cross-compiles via `fyne-cross` and ships Python sources
+  alongside the app (an external macOS SDK is required).
+
+## Installation notes
+
+### macOS: First launch
+
+macOS may show a warning because the app is not notarized by Apple. To open it:
+
+**Option A:** Right-click the app → Open → "Open" in the dialog
+
+**Option B (terminal):**
+```bash
+xattr -rd com.apple.quarantine /Applications/PassQuantum.app
+```
+
+This only needs to be done once.
 
 ## Current UI surface
 

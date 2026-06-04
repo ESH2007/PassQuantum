@@ -16,6 +16,7 @@ vaults/
 
 # Build artifacts
 build/
+build/mac/
 fyne-cross/
 *.exe
 PassQuantum

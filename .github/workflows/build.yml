@@ -8,10 +8,11 @@ on:
   workflow_dispatch:
 
 # ─────────────────────────────────────────────────────────────────────────────
-# All three jobs run on ubuntu-latest to mirror build.sh exactly:
-#   • Linux  → native CGO build
-#   • Windows → fyne-cross windows (Docker)
-#   • macOS  → fyne-cross darwin  (Docker + phracker MacOSX11.3 SDK)
+# Each job runs on its own native runner so every binary is built the same way a
+# developer would build it locally:
+#   • Linux   → ubuntu-latest  : native CGO build (mirrors build.sh linux)
+#   • Windows → windows-latest  : native PyInstaller + CGO (Build-FaceBundle.ps1)
+#   • macOS   → macos-14 (arm64): native PyInstaller + fyne package (build-mac-native.sh)
 # ─────────────────────────────────────────────────────────────────────────────
 
 jobs:
@@ -126,4 +127,139 @@ jobs:
         with:
           name: PassQuantum-windows-amd64
           path: build/windows/PassQuantum.exe
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────────────────
+  # macOS native build  (mirrors: build-mac-native.sh)
+  # Runs on a real Apple Silicon (arm64) runner — NOT fyne-cross. PyInstaller
+  # produces a native face_guard bundle that is embedded into the .app via
+  # go:embed + -tags with_face_bundle, then the bundle is ad-hoc signed and
+  # packaged into a DMG.
+  #
+  # macos-14 runners ship Xcode, so no xcode-select --install is needed.
+  # Note: GitHub's macOS minutes bill at a 10× multiplier vs Linux for private
+  # repos, so the job is kept lean (PyInstaller is the heaviest step).
+  # ──────────────────────────────────────────────────────────────────────────
+  build-macos:
+    name: Build — macOS (arm64)
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PyInstaller + Python dependencies
+        run: |
+          pip install --quiet pyinstaller mediapipe opencv-python-headless "numpy<2"
+
+      - name: Build Python bundle with PyInstaller (--onedir)
+        id: bundle
+        continue-on-error: true
+        run: |
+          PROJECT_ROOT="$(pwd)"
+          # --onedir (NOT --onefile): the helper must run in place from inside the
+          # signed .app for the macOS camera/TCC permission to work.
+          python -m PyInstaller \
+            --onedir \
+            --name face_guard_bundle \
+            --distpath build/mac-faceguard \
+            --workpath /tmp/passquantum_pyinstaller_work \
+            --specpath /tmp/passquantum_pyinstaller_spec \
+            --paths "${PROJECT_ROOT}/python" \
+            --add-data "${PROJECT_ROOT}/models:models" \
+            --collect-all mediapipe \
+            --hidden-import cv2 \
+            --hidden-import numpy \
+            --hidden-import geometric_encoder \
+            --hidden-import liveness_detector \
+            --hidden-import face_authenticator \
+            --noconfirm \
+            --clean \
+            "${PROJECT_ROOT}/python/face_guard.py"
+
+      - name: Install fyne CLI
+        run: go install fyne.io/fyne/v2/cmd/fyne@latest
+
+      - name: Package macOS .app
+        run: |
+          mkdir -p build/mac
+          # fyne resolves -icon relative to -sourceDir, so use an absolute path.
+          # The Go binary does NOT embed the helper on macOS (no -tags); the helper
+          # is shipped inside the bundle and located by ui/python_bundle_darwin.go.
+          ICON="$(pwd)/Icon.png"
+          CGO_ENABLED=1 GOARCH=arm64 fyne package -os darwin \
+            -icon "$ICON" -name PassQuantum \
+            -appID com.passquantum.app -sourceDir ./ui
+          # fyne emits PassQuantum.app in the cwd (or next to sourceDir).
+          if [ -d PassQuantum.app ]; then
+            mv PassQuantum.app build/mac/PassQuantum.app
+          elif [ -d ui/PassQuantum.app ]; then
+            mv ui/PassQuantum.app build/mac/PassQuantum.app
+          else
+            echo "fyne package did not produce PassQuantum.app" >&2
+            exit 1
+          fi
+          ONEDIR="build/mac-faceguard/face_guard_bundle"
+          if [ -x "$ONEDIR/face_guard_bundle" ]; then
+            # Ship the helper INSIDE the bundle so it is signed in place.
+            DEST="build/mac/PassQuantum.app/Contents/Resources/faceguard"
+            rm -rf "$DEST"; mkdir -p "$DEST"
+            cp -R "$ONEDIR"/. "$DEST"/
+            chmod +x "$DEST/face_guard_bundle"
+            echo "Embedded in-bundle helper at Contents/Resources/faceguard/"
+          else
+            # Fallback: ship .py sources + models in the .app (needs Python at runtime).
+            echo "PyInstaller bundle missing — shipping .py sources (fallback)"
+            RES="build/mac/PassQuantum.app/Contents/Resources"
+            mkdir -p "$RES/python"
+            cp python/face_guard.py python/geometric_encoder.py \
+               python/liveness_detector.py python/face_authenticator.py "$RES/python/"
+            cp -R models "$RES/"
+          fi
+
+      - name: Inject camera entitlement into Info.plist
+        run: |
+          PLIST="build/mac/PassQuantum.app/Contents/Info.plist"
+          if ! /usr/libexec/PlistBuddy -c "Print :NSCameraUsageDescription" "$PLIST" 2>/dev/null; then
+            /usr/libexec/PlistBuddy -c 'Add :NSCameraUsageDescription string "PassQuantum uses the camera for face biometric authentication."' "$PLIST"
+          fi
+
+      - name: Ad-hoc code sign the .app
+        run: |
+          codesign --deep --force --sign - build/mac/PassQuantum.app
+          codesign --verify --deep --strict build/mac/PassQuantum.app || \
+            echo "::warning::Ad-hoc signature verification failed (best-effort)"
+
+      - name: Create and sign DMG
+        run: |
+          hdiutil create -volname "PassQuantum" \
+            -srcfolder build/mac/PassQuantum.app \
+            -ov -format UDZO \
+            build/mac/PassQuantum.dmg
+          codesign --force --sign - build/mac/PassQuantum.dmg
+
+      - name: Upload macOS DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: PassQuantum-macos-arm64-dmg
+          path: build/mac/PassQuantum.dmg
+          if-no-files-found: error
+
+      - name: Upload macOS App
+        uses: actions/upload-artifact@v4
+        with:
+          name: PassQuantum-macos-arm64-app
+          path: build/mac/PassQuantum.app
           if-no-files-found: error

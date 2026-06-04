@@ -1,8 +1,14 @@
-//go:build with_face_bundle && !windows
+//go:build with_face_bundle && !windows && !darwin
 
 package main
 
-// python_bundle.go — embeds the PyInstaller face_guard bundle into the binary.
+// python_bundle.go — embeds the PyInstaller face_guard bundle into the binary
+// on Linux (the Linux embed-and-extract strategy).
+//
+// macOS is handled separately by python_bundle_darwin.go: on macOS the helper
+// must run from INSIDE the signed .app bundle for the camera (TCC) to work, so
+// extracting an embedded copy to /tmp (what this file does) is the wrong model
+// there. Hence this file is tagged "&& !darwin".
 //
 // This file is compiled only when the build tag "with_face_bundle" is set
 // (i.e. only by build.sh after PyInstaller has produced ui/face_guard_bundle).

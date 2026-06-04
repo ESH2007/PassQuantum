@@ -282,6 +282,14 @@ build_macos() {
     print_header "Building for macOS"
     mkdir -p "$BUILD_DIR/mac"
 
+    # On a Mac, build natively (embedded PyInstaller bundle, .app, ad-hoc sign,
+    # DMG) by delegating to build-mac-native.sh. The fyne-cross path below is
+    # only for cross-compiling from Linux.
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        "$SCRIPT_DIR/build-mac-native.sh"
+        return $?
+    fi
+
     local mac_sdk_path="${MACOSX_SDK_PATH:-/home/lenovo/dev/PassQuantum/SDKs/MacOSX11.3.sdk}"
     if [[ ! -d "$mac_sdk_path" ]]; then
         print_error "macOS SDK path not found: $mac_sdk_path"
