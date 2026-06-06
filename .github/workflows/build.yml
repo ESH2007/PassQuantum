@@ -244,10 +244,30 @@ jobs:
 
       - name: Create and sign DMG
         run: |
-          hdiutil create -volname "PassQuantum" \
-            -srcfolder build/mac/PassQuantum.app \
-            -ov -format UDZO \
-            build/mac/PassQuantum.dmg
+          # Stage the .app in an isolated folder so hdiutil snapshots a quiet
+          # tree (avoids "Resource busy" from Spotlight/fsevents touching the
+          # freshly-signed bundle).
+          STAGE="$(mktemp -d)/dmg-src"
+          mkdir -p "$STAGE"
+          cp -R build/mac/PassQuantum.app "$STAGE/"
+          # Keep Spotlight from indexing the staging tree mid-build.
+          touch "$STAGE/.metadata_never_index"
+          # hdiutil intermittently fails with "Resource busy" on GH runners;
+          # retry a few times with a short backoff.
+          for attempt in 1 2 3 4 5; do
+            if hdiutil create -volname "PassQuantum" \
+                 -srcfolder "$STAGE" \
+                 -ov -format UDZO \
+                 build/mac/PassQuantum.dmg; then
+              break
+            fi
+            if [ "$attempt" -eq 5 ]; then
+              echo "hdiutil create failed after $attempt attempts" >&2
+              exit 1
+            fi
+            echo "hdiutil create failed (attempt $attempt) — retrying..." >&2
+            sleep 10
+          done
           codesign --force --sign - build/mac/PassQuantum.dmg
 
       - name: Upload macOS DMG
