@@ -11,7 +11,7 @@
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
   },
-  "homepage": "https://ESH2007.github.io/PassQuantum-web",
+  "homepage": "https://ESH2007.github.io/PassQuantum/",
   "dependencies": {
     "gh-pages": "^6.3.0",
     "lucide-react": "^1.16.0",
