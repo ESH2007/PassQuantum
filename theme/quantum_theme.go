@@ -14,43 +14,43 @@ var _ fyne.Theme = (*QuantumTheme)(nil)
 
 func (q *QuantumTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) color.Color {
 	switch name {
-	// Surfaces
+	// Surfaces — dark ramp anchored to the brand ink #11161D
 	case fynetheme.ColorNameBackground:
-		return color.NRGBA{R: 0x0b, G: 0x0e, B: 0x13, A: 255} // bg0
+		return color.NRGBA{R: 0x0a, G: 0x0d, B: 0x12, A: 255} // bg0
 	case fynetheme.ColorNameMenuBackground:
-		return color.NRGBA{R: 0x0f, G: 0x13, B: 0x19, A: 255} // bg1
+		return color.NRGBA{R: 0x0e, G: 0x12, B: 0x18, A: 255} // bg1
 	case fynetheme.ColorNameOverlayBackground:
-		return color.NRGBA{R: 0x13, G: 0x18, B: 0x22, A: 255} // bg2
+		return color.NRGBA{R: 0x11, G: 0x16, B: 0x1d, A: 255} // bg2 (brand ink)
 	case fynetheme.ColorNameHeaderBackground:
-		return color.NRGBA{R: 0x0f, G: 0x13, B: 0x19, A: 255} // bg1
+		return color.NRGBA{R: 0x0e, G: 0x12, B: 0x18, A: 255} // bg1
 	case fynetheme.ColorNameButton:
-		return color.NRGBA{R: 0x1a, G: 0x20, B: 0x30, A: 255} // bg3
+		return color.NRGBA{R: 0x1a, G: 0x21, B: 0x2b, A: 255} // bg3
 	case fynetheme.ColorNameDisabledButton:
-		return color.NRGBA{R: 0x13, G: 0x18, B: 0x22, A: 255} // bg2
+		return color.NRGBA{R: 0x11, G: 0x16, B: 0x1d, A: 255} // bg2
 	case fynetheme.ColorNameInputBackground:
-		return color.NRGBA{R: 0x0f, G: 0x13, B: 0x19, A: 255} // bg1
+		return color.NRGBA{R: 0x0e, G: 0x12, B: 0x18, A: 255} // bg1
 	case fynetheme.ColorNameInputBorder:
 		return color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x1a} // line2
 
 	// Text
 	case fynetheme.ColorNameForeground:
-		return color.NRGBA{R: 0xe7, G: 0xea, B: 0xf0, A: 255} // fg0
+		return color.NRGBA{R: 0xea, G: 0xee, B: 0xf2, A: 255} // fg0 (brand near-white)
 	case fynetheme.ColorNamePlaceHolder:
-		return color.NRGBA{R: 0x55, G: 0x5c, B: 0x6c, A: 255} // fg3
+		return color.NRGBA{R: 0x4d, G: 0x56, B: 0x62, A: 255} // fg3
 	case fynetheme.ColorNameDisabled:
-		return color.NRGBA{R: 0x7a, G: 0x82, B: 0x94, A: 255} // fg2
+		return color.NRGBA{R: 0x6b, G: 0x77, B: 0x85, A: 255} // fg2 (brand muted slate)
 
-	// Accent
+	// Accent — brand teal
 	case fynetheme.ColorNamePrimary:
-		return color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 255} // accent
+		return color.NRGBA{R: 0x2d, G: 0xd4, B: 0xbf, A: 255} // accent
 	case fynetheme.ColorNameFocus:
-		return color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 0x66} // accentLine (40%)
+		return color.NRGBA{R: 0x2d, G: 0xd4, B: 0xbf, A: 0x66} // accentLine (40%)
 	case fynetheme.ColorNameSelection:
-		return color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 0x24} // accentSoft (14%)
+		return color.NRGBA{R: 0x2d, G: 0xd4, B: 0xbf, A: 0x24} // accentSoft (14%)
 	case fynetheme.ColorNameHyperlink:
-		return color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 255} // accent
+		return color.NRGBA{R: 0x0e, G: 0x9c, B: 0x86, A: 255} // deep teal
 	case fynetheme.ColorNameForegroundOnPrimary:
-		return color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 255} // accentFg
+		return color.NRGBA{R: 0x11, G: 0x16, B: 0x1d, A: 255} // accentFg — brand ink on teal
 
 	// Semantic
 	case fynetheme.ColorNameSuccess:
@@ -72,13 +72,13 @@ func (q *QuantumTheme) Color(name fyne.ThemeColorName, _ fyne.ThemeVariant) colo
 	case fynetheme.ColorNameSeparator:
 		return color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x0f} // line1 (6%)
 	case fynetheme.ColorNameHover:
-		return color.NRGBA{R: 0x1a, G: 0x20, B: 0x30, A: 255} // bg3
+		return color.NRGBA{R: 0x1a, G: 0x21, B: 0x2b, A: 255} // bg3
 	case fynetheme.ColorNamePressed:
-		return color.NRGBA{R: 0x23, G: 0x2a, B: 0x3a, A: 255} // bg4
+		return color.NRGBA{R: 0x24, G: 0x2c, B: 0x38, A: 255} // bg4
 	case fynetheme.ColorNameScrollBar:
 		return color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x29} // line3
 	case fynetheme.ColorNameScrollBarBackground:
-		return color.NRGBA{R: 0x0f, G: 0x13, B: 0x19, A: 255} // bg1
+		return color.NRGBA{R: 0x0e, G: 0x12, B: 0x18, A: 255} // bg1
 
 	default:
 		return fynetheme.DefaultTheme().Color(name, fynetheme.VariantDark)

@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+/* Design tokens — Tailwind generates utilities (bg-bg, text-accent, …).
+   Note: the page-background token is named --color-bg (not --color-base)
+   so its text utility (text-bg) doesn't collide with Tailwind's built-in
+   text-base font-size utility. */
+@theme {
+  --color-bg:      #0E1117;
+  --color-surface: #161C24;
+  --color-wire:    #2A323D;
+  --color-accent:  #2DD4BF;
+}
+
+/* Base */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background-color: var(--color-bg);
+  color: #EAEEF2;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: var(--color-bg); }
+::-webkit-scrollbar-thumb { background: var(--color-wire); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-accent); }
+
+/* Background grid */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(45,212,191,0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(45,212,191,0.035) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* Radial hero glow */
+.hero-glow {
+  background: radial-gradient(
+    ellipse 80% 55% at 50% 0%,
+    rgba(45,212,191,0.07) 0%,
+    transparent 70%
+  );
+}
+
+/* Animations */
+@keyframes float-up {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-14px); }
+}
+
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 18px rgba(45,212,191,0.25); }
+  50%       { box-shadow: 0 0 36px rgba(45,212,191,0.55), 0 0 70px rgba(45,212,191,0.15); }
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(28px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-float      { animation: float-up 6s ease-in-out infinite; }
+.animate-glow-pulse { animation: glow-pulse 3s ease-in-out infinite; }
+.animate-fade-in-up { animation: fade-in-up 0.7s ease-out forwards; }
+
+.delay-100 { animation-delay: 0.1s; }
+.delay-200 { animation-delay: 0.2s; }
+.delay-300 { animation-delay: 0.3s; }
+.delay-500 { animation-delay: 0.5s; }

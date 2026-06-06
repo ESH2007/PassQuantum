@@ -123,7 +123,7 @@ func (ns *NavigationState) rebuildUI() {
 	if img, _, err := image.Decode(bytes.NewReader(assets.LogoImage)); err == nil {
 		logoImg := canvas.NewImageFromImage(img)
 		logoImg.FillMode = canvas.ImageFillContain
-		logoImg.SetMinSize(fyne.NewSize(20, 20))
+		logoImg.SetMinSize(fyne.NewSize(56, 56))
 		brandIconInner = logoImg
 	} else {
 		ico := canvas.NewImageFromResource(theme.IconAtom)
@@ -132,7 +132,7 @@ func (ns *NavigationState) rebuildUI() {
 	}
 
 	brandIcon := container.NewStack(brandIconBg, brandIconBorder, container.NewCenter(brandIconInner))
-	brandIconWrap := container.NewGridWrap(fyne.NewSize(28, 28), brandIcon)
+	brandIconWrap := container.NewGridWrap(fyne.NewSize(64, 64), brandIcon)
 
 	brandName := canvas.NewText("PassQuantum", theme.ColorTextPrimary)
 	brandName.TextSize = 13

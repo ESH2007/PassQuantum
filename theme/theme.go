@@ -16,30 +16,30 @@ import (
 // DESIGN SYSTEM TOKENS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 var (
-	// Surfaces
-	ColorBg        = color.NRGBA{R: 0x0b, G: 0x0e, B: 0x13, A: 255} // bg0 — page background
-	ColorSidebarBg = color.NRGBA{R: 0x0f, G: 0x13, B: 0x19, A: 255} // bg1 — sidebar, inputs
-	ColorCardBg    = color.NRGBA{R: 0x13, G: 0x18, B: 0x22, A: 255} // bg2 — card surface
-	ColorInputBg   = color.NRGBA{R: 0x0f, G: 0x13, B: 0x19, A: 255} // bg1 — input fields
-	ColorBg3       = color.NRGBA{R: 0x1a, G: 0x20, B: 0x30, A: 255} // bg3 — hover/selected
-	ColorBg4       = color.NRGBA{R: 0x23, G: 0x2a, B: 0x3a, A: 255} // bg4 — pressed
+	// Surfaces — dark ramp anchored to the brand ink #11161D
+	ColorBg        = color.NRGBA{R: 0x0a, G: 0x0d, B: 0x12, A: 255} // bg0 — page background
+	ColorSidebarBg = color.NRGBA{R: 0x0e, G: 0x12, B: 0x18, A: 255} // bg1 — sidebar, inputs
+	ColorCardBg    = color.NRGBA{R: 0x11, G: 0x16, B: 0x1d, A: 255} // bg2 — card surface (brand ink)
+	ColorInputBg   = color.NRGBA{R: 0x0e, G: 0x12, B: 0x18, A: 255} // bg1 — input fields
+	ColorBg3       = color.NRGBA{R: 0x1a, G: 0x21, B: 0x2b, A: 255} // bg3 — hover/selected
+	ColorBg4       = color.NRGBA{R: 0x24, G: 0x2c, B: 0x38, A: 255} // bg4 — pressed
 
-	// Accent — institutional blue
-	ColorAccentCyan = color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 255} // accent #3b82f6
-	ColorAccentPink = color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 255} // mapped to accent (pink removed)
-	ColorPurple     = color.NRGBA{R: 0x7a, G: 0x82, B: 0x94, A: 255} // fg2 — tertiary label
-	ColorAccentSoft = color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 0x24} // 14% alpha
-	ColorAccentLine = color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 0x66} // 40% alpha
+	// Accent — brand teal
+	ColorAccentCyan = color.NRGBA{R: 0x2d, G: 0xd4, B: 0xbf, A: 255} // accent #2dd4bf
+	ColorAccentPink = color.NRGBA{R: 0x2d, G: 0xd4, B: 0xbf, A: 255} // mapped to accent (pink removed)
+	ColorPurple     = color.NRGBA{R: 0x6b, G: 0x77, B: 0x85, A: 255} // fg2 — tertiary label
+	ColorAccentSoft = color.NRGBA{R: 0x2d, G: 0xd4, B: 0xbf, A: 0x24} // 14% alpha
+	ColorAccentLine = color.NRGBA{R: 0x2d, G: 0xd4, B: 0xbf, A: 0x66} // 40% alpha
 
 	// Action roles
 	ColorPrimaryButton   = ColorAccentCyan
 	ColorSecondaryButton = ColorBg3
 
 	// Text
-	ColorTextPrimary   = color.NRGBA{R: 0xe7, G: 0xea, B: 0xf0, A: 255} // fg0
-	ColorTextSecondary = color.NRGBA{R: 0xb3, G: 0xba, B: 0xc8, A: 255} // fg1
-	ColorFg2           = color.NRGBA{R: 0x7a, G: 0x82, B: 0x94, A: 255} // fg2 — tertiary
-	ColorFg3           = color.NRGBA{R: 0x55, G: 0x5c, B: 0x6c, A: 255} // fg3 — placeholder
+	ColorTextPrimary   = color.NRGBA{R: 0xea, G: 0xee, B: 0xf2, A: 255} // fg0 — brand near-white
+	ColorTextSecondary = color.NRGBA{R: 0xae, G: 0xb6, B: 0xc2, A: 255} // fg1
+	ColorFg2           = color.NRGBA{R: 0x6b, G: 0x77, B: 0x85, A: 255} // fg2 — brand muted slate
+	ColorFg3           = color.NRGBA{R: 0x4d, G: 0x56, B: 0x62, A: 255} // fg3 — placeholder
 
 	// Borders
 	ColorLine1      = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x0f} // hairlines (6%)
@@ -69,7 +69,7 @@ var (
 	ColorDangerLine = color.NRGBA{R: 0xd0, G: 0x4a, B: 0x4a, A: 0x59} // 35%
 
 	// Pill text colors
-	ColorAccentPillFg = color.NRGBA{R: 0xc9, G: 0xdc, B: 0xfb, A: 255}
+	ColorAccentPillFg = color.NRGBA{R: 0xa8, G: 0xec, B: 0xe1, A: 255}
 	ColorOkPillFg     = color.NRGBA{R: 0xb6, G: 0xe7, B: 0xcb, A: 255}
 	ColorWarnPillFg   = color.NRGBA{R: 0xf0, G: 0xd4, B: 0xa2, A: 255}
 	ColorDangerPillFg = color.NRGBA{R: 0xf3, G: 0xa8, B: 0xa8, A: 255}

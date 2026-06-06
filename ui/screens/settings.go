@@ -1,6 +1,7 @@
 package screens
 
 import (
+	"bytes"
 	"fmt"
 	"image"
 	"image/color"
@@ -17,6 +18,7 @@ import (
 	"passquantum/app"
 	"passquantum/bridge"
 	"passquantum/theme"
+	"passquantum/ui/assets"
 	"passquantum/ui/widgets"
 
 	"fyne.io/fyne/v2"
@@ -386,7 +388,7 @@ func buildDisplaySettings(w fyne.Window, fyneApp fyne.App, appState *app.AppStat
 		c    color.NRGBA
 	}
 	accents := []accentOption{
-		{"Blue", "#3b82f6", color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 255}},
+		{"Teal", "#2dd4bf", color.NRGBA{R: 0x2d, G: 0xd4, B: 0xbf, A: 255}},
 		{"Emerald", "#10b981", color.NRGBA{R: 0x10, G: 0xb9, B: 0x81, A: 255}},
 		{"Gold", "#eab308", color.NRGBA{R: 0xea, G: 0xb3, B: 0x08, A: 255}},
 		{"Mono", "#94a3b8", color.NRGBA{R: 0x94, G: 0xa3, B: 0xb8, A: 255}},
@@ -483,8 +485,17 @@ func buildDisplaySettings(w fyne.Window, fyneApp fyne.App, appState *app.AppStat
 
 func buildAboutSettings(w fyne.Window, fyneApp fyne.App, appState *app.AppState) *fyne.Container {
 	// Product card
-	atomIco := canvas.NewImageFromResource(theme.IconAtom)
-	atomIco.SetMinSize(fyne.NewSize(48, 48))
+	var brandIconInner fyne.CanvasObject
+	if img, _, err := image.Decode(bytes.NewReader(assets.LogoImage)); err == nil {
+		logoImg := canvas.NewImageFromImage(img)
+		logoImg.FillMode = canvas.ImageFillContain
+		logoImg.SetMinSize(fyne.NewSize(80, 80))
+		brandIconInner = logoImg
+	} else {
+		ico := canvas.NewImageFromResource(theme.IconAtom)
+		ico.SetMinSize(fyne.NewSize(16, 16))
+		brandIconInner = ico
+	}
 
 	iconBg := canvas.NewRectangle(theme.ColorAccentSoft)
 	iconBg.CornerRadius = 18
@@ -495,12 +506,12 @@ func buildAboutSettings(w fyne.Window, fyneApp fyne.App, appState *app.AppState)
 	iconBorder.StrokeColor = theme.ColorAccentLine
 	iconBorder.FillColor = color.Transparent
 	iconBorder.SetMinSize(fyne.NewSize(96, 96))
-	iconBlock := container.NewStack(iconBg, iconBorder, container.NewCenter(atomIco))
+	iconBlock := container.NewStack(iconBg, iconBorder, container.NewCenter(brandIconInner))
 
 	productInfo := container.NewVBox(
 		theme.SectionEyebrow("PASSQUANTUM"),
 		canvas.NewText("PassQuantum", theme.ColorTextPrimary),
-		theme.MonoText("v1.0.0 | PQ-Safe", 11, theme.ColorFg2),
+		theme.MonoText("v1.1.4-beta | PQ-Safe", 11, theme.ColorFg2),
 		canvas.NewText("A post-quantum cryptography password manager using Kyber and AES-256-GCM.", theme.ColorTextSecondary),
 	)
 
@@ -750,25 +761,25 @@ func applyExtractedPalette(colors []color.NRGBA) {
 }
 
 func resetDefaultPalette() {
-	theme.ColorBg = color.NRGBA{R: 0x0b, G: 0x0e, B: 0x13, A: 255}
-	theme.ColorSidebarBg = color.NRGBA{R: 0x0f, G: 0x13, B: 0x19, A: 255}
-	theme.ColorCardBg = color.NRGBA{R: 0x13, G: 0x18, B: 0x22, A: 255}
-	theme.ColorInputBg = color.NRGBA{R: 0x0f, G: 0x13, B: 0x19, A: 255}
+	theme.ColorBg = color.NRGBA{R: 0x0a, G: 0x0d, B: 0x12, A: 255}
+	theme.ColorSidebarBg = color.NRGBA{R: 0x0e, G: 0x12, B: 0x18, A: 255}
+	theme.ColorCardBg = color.NRGBA{R: 0x11, G: 0x16, B: 0x1d, A: 255}
+	theme.ColorInputBg = color.NRGBA{R: 0x0e, G: 0x12, B: 0x18, A: 255}
 
-	theme.ColorAccentCyan = color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 255}
+	theme.ColorAccentCyan = color.NRGBA{R: 0x2d, G: 0xd4, B: 0xbf, A: 255}
 	theme.ColorAccentCyn = theme.ColorAccentCyan
 	theme.ColorAccentPink = theme.ColorAccentCyan
 	theme.ColorMagenta = theme.ColorAccentPink
-	theme.ColorPurple = color.NRGBA{R: 0x7a, G: 0x82, B: 0x94, A: 255}
+	theme.ColorPurple = color.NRGBA{R: 0x6b, G: 0x77, B: 0x85, A: 255}
 
-	theme.ColorTextPrimary = color.NRGBA{R: 0xe7, G: 0xea, B: 0xf0, A: 255}
-	theme.ColorTextSecondary = color.NRGBA{R: 0xb3, G: 0xba, B: 0xc8, A: 255}
+	theme.ColorTextPrimary = color.NRGBA{R: 0xea, G: 0xee, B: 0xf2, A: 255}
+	theme.ColorTextSecondary = color.NRGBA{R: 0xae, G: 0xb6, B: 0xc2, A: 255}
 	theme.ColorTextPrim = theme.ColorTextPrimary
 	theme.ColorTextSec = theme.ColorTextSecondary
 
 	theme.ColorBorderCyan = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x1a}
 	theme.ColorBorder = theme.ColorBorderCyan
-	theme.ColorGlowCyan = color.NRGBA{R: 0x3b, G: 0x82, B: 0xf6, A: 0x24}
+	theme.ColorGlowCyan = color.NRGBA{R: 0x2d, G: 0xd4, B: 0xbf, A: 0x24}
 
 	theme.ColorPrimaryButton = theme.ColorAccentCyan
 	theme.ColorSecondaryButton = color.NRGBA{R: 0x1a, G: 0x20, B: 0x30, A: 255}

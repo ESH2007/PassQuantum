@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="70 372 345 104" width="345" height="104" role="img" aria-label="PassQuantum — post-quantum password manager">
+  <title>PassQuantum</title>
+  <path d="M100 404 L100 394 A10 10 0 0 1 120 394 L120 404" fill="none" stroke="#11161D" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="110" cy="430" r="30" fill="none" stroke="#11161D" stroke-width="6"/>
+  <line x1="125" y1="445" x2="138" y2="458" stroke="#11161D" stroke-width="7" stroke-linecap="round"/>
+  <circle cx="110" cy="430" r="6" fill="#2DD4BF"/>
+  <text x="172" y="438" font-family="'JetBrains Mono','SFMono-Regular','Consolas','Liberation Mono',monospace" font-size="32" font-weight="500" fill="#11161D" letter-spacing="0.5">Pass<tspan fill="#0E9C86">Quantum</tspan></text>
+  <text x="173" y="462" font-family="'JetBrains Mono','SFMono-Regular','Consolas','Liberation Mono',monospace" font-size="13" fill="#6B7785" letter-spacing="0.5">post-quantum password manager</text>
+</svg>
