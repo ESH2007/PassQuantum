@@ -1,6 +1,7 @@
 # PassQuantum Security Architecture
 
-This document describes the current security design implemented in `new-passquantum/`.
+This document describes the current security design implemented in the
+repository.
 
 ## 1. Security goals
 
@@ -8,14 +9,16 @@ PassQuantum currently tries to protect:
 
 - the application's global unlock state
 - the confidentiality and integrity of each vault file
-- the confidentiality of each stored item payload
+- the confidentiality of each stored item payload (passwords, notes, cards, TOTP
+  secrets, and encrypted files)
 - local use of the unlocked app through optional face monitoring
 
 It does **not** attempt to solve:
 
 - malware on the host
 - keyloggers or screen capture on an already-compromised machine
-- network security, because the product is local-first and offline
+- general network security beyond the loopback-only browser bridge described in
+  §10 (the product is otherwise local-first and offline)
 - secure multi-device sync
 
 ## 2. Primary security assets
@@ -27,7 +30,9 @@ It does **not** attempt to solve:
 | `app-security.pqmeta` | verifier profile, not plaintext password |
 | `vaults/*.pqdb` | authenticated encryption at rest |
 | Vault item payloads | Kyber-wrapped shared secret + AES-GCM |
+| Encrypted file blobs | Kyber-wrapped shared secret + streamed AES-GCM (`core/filevault`) |
 | Face profile | stored as local NumPy encodings in `face_data.npy` |
+| Browser autofill access | loopback-only HTTP server gated by a pairing token (§10) |
 
 ## 3. App-level security profile
 
@@ -70,19 +75,17 @@ If the fingerprint does not match, startup falls back to setup mode and shows a 
 
 ## 4. Key derivation
 
-`core/crypto/kdf.go` currently uses Argon2id with these defaults:
+Two derivation profiles exist, one per vault format:
 
-- Salt: 16 bytes
-- Memory: 64 MB
-- Iterations: 1
-- Parallelism: 4
+- **PQ vaults (`core/crypto/vault_pq.go`, current):** Argon2id with a 32-byte
+  salt, 64 MB memory, 2 iterations, parallelism 4 → a 32-byte master key. HKDF
+  then expands that master key into domain-separated seeds for the Kyber768 and
+  Dilithium3 keys, keeping each purpose's key independent.
+- **Legacy vaults (`core/crypto/kdf.go`):** Argon2id with a 16-byte salt, 64 MB,
+  1 iteration, parallelism 4 → 64 bytes split by domain separation into an
+  encryption key and a verification key.
 
-The 64-byte derived master material is split through domain separation into:
-
-- encryption key
-- verification key
-
-This prevents key reuse across purposes.
+Domain separation in both cases prevents key reuse across purposes.
 
 ## 5. Vault security
 
@@ -92,31 +95,30 @@ Every vault stores its own KDF parameters. Even if the same global master passwo
 
 ### 5.2 Vault file protection
 
-`core/crypto/vault.go` protects the vault as follows:
+New vaults use the **PQ pipeline** (`core/crypto/vault_pq.go`, magic `PQVT`):
 
 1. Serialize all entries into plaintext
-2. Encrypt the plaintext with AES-256-GCM
-3. Prefix the AES nonce to the encrypted payload
-4. Compute HMAC-SHA256 over:
-   - vault version
-   - serialized KDF params
-   - encrypted data
+2. Encrypt the plaintext with AES-256-GCM under the derived AES key
+3. Sign the header + ciphertext with Dilithium3 (post-quantum signature)
 
-This gives:
+Older **legacy vaults** (`core/crypto/vault.go`) are still readable: AES-256-GCM
+payload plus an HMAC-SHA256 over version + serialized KDF params + encrypted data.
+`core/storage` detects the format and migrates legacy vaults on write.
 
-- confidentiality through AES-GCM
-- file-wide integrity through HMAC
-- rejection of tampered or wrongly decrypted vaults
+Both formats give confidentiality through AES-GCM and whole-file integrity
+(Dilithium3 signature or HMAC), so tampered or wrongly decrypted vaults are
+rejected.
 
 ### 5.3 On-disk vault structure
 
 ```text
-Version
-KDF params length
-KDF params
-HMAC
-Encrypted data length
-Encrypted data (nonce + ciphertext)
+PQ format (PQVT):           Legacy format:
+Magic "PQVT"                Version
+Version                     KDF params length
+KDF params (salt, …)        KDF params
+Dilithium3 signature        HMAC
+Encrypted data              Encrypted data length
+  (nonce + AES-GCM ct)      Encrypted data (nonce + ciphertext)
 ```
 
 ## 6. Entry-level secret protection
@@ -144,12 +146,16 @@ This means the outer vault encryption and the inner item encryption are separate
 - Password items
 - Note items
 - Card items
+- TOTP / 2FA items (serialized `otpauth` parameters; live codes are never stored)
+- Encrypted file items (the file blob is encrypted separately via `core/filevault`)
 
-The vault plaintext starts with `PQV2`, followed by typed entries. Legacy payload parsing is still supported for older data.
+The vault plaintext starts with a magic header followed by typed entries. Legacy
+payload parsing is still supported for older data.
 
 ## 8. Master-password rotation
 
-Changing the master password is handled in `ui/access_control.go`.
+Changing the master password is handled by `ChangeMasterPassword` in
+`app/access.go`.
 
 Security properties of that flow:
 
@@ -191,7 +197,27 @@ This feature improves local shoulder-surfing and walk-away resistance, but it do
 - OS session locking
 - full-disk encryption
 
-## 10. Local file expectations
+## 10. Browser autofill bridge
+
+`internal/browser` runs an HTTP server bound to `127.0.0.1:8765` so the browser
+extension can autofill and save credentials. Its security properties:
+
+- **Loopback only.** Requests whose host is not localhost are rejected, so the
+  server is not reachable from the network.
+- **Pairing required.** The desktop app shows a short-lived token; the extension
+  must submit it to pair, and authenticates with the paired secret thereafter.
+  Unpaired requests are refused.
+- **Unlock-gated.** Credentials are only ever served for an already-unlocked
+  vault; locking the app cuts off the extension.
+- **Rate limited.** A dependency-free token-bucket limiter throttles requests.
+- **Per-site opt-out.** A persisted "never save" list suppresses save prompts for
+  chosen domains.
+
+This still widens the local attack surface: any process able to bind/connect on
+loopback and complete pairing could query the unlocked vault. It is a
+convenience feature, not a hardened boundary.
+
+## 11. Local file expectations
 
 | File | Meaning |
 | --- | --- |
@@ -208,7 +234,7 @@ Current write modes in code:
 - `public.key`: `0644`
 - app-security metadata: `0600`
 
-## 11. Threat model summary
+## 12. Threat model summary
 
 | Threat | Current mitigation |
 | --- | --- |
@@ -219,17 +245,18 @@ Current write modes in code:
 | Local walk-away exposure | face guard + app lock |
 | Access with wrong private key | fingerprint-bound app profile |
 
-## 12. Current limitations
+## 13. Current limitations
 
 These are important to understand when evaluating the present implementation:
 
 - An unlocked session still keeps sensitive material in process memory until lock/exit.
-- Clipboard copies are not automatically cleared by the currently implemented code path.
-- Backup/export/import/restore actions shown in the settings UI are mostly placeholders right now.
+- TOTP code copies are auto-cleared from the clipboard after a delay; other copy paths may not be.
+- Backup/export/restore actions shown in the Settings → Vaults UI are mostly placeholders right now (import, however, is fully implemented).
 - A compromised host can still capture keystrokes, screenshots, or decrypted content.
 - The face-guard process is local and practical, but it is not a hardened biometric enclave.
+- The browser bridge widens the local attack surface (see §10).
 
-## 13. Operational recommendations
+## 14. Operational recommendations
 
 - Use a strong global master password
 - Back up `private.key`, `public.key`, `app-security.pqmeta`, and `vaults/`

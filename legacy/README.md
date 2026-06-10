@@ -3,6 +3,9 @@
 This directory holds archived files that are **no longer part of the active application**.
 They are kept for historical reference only. Do not import or build from these files.
 
+> Note: the `new-passquantum/` paths below refer to a former project subdirectory
+> that has since become the repository root.
+
 | File | Original location | Why archived |
 |---|---|---|
 | `main.py` | repo root | Early Python prototype. Stored passwords in a plaintext `passwords.txt` file. Replaced by the Go application in `new-passquantum/`. |

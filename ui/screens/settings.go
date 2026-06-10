@@ -413,7 +413,6 @@ func buildDisplaySettings(w fyne.Window, fyneApp fyne.App, appState *app.AppStat
 
 		btn := theme.NewClickOverlay(func() {
 			theme.ColorAccentCyan = accent.c
-			theme.ColorAccentCyn = accent.c
 			theme.ColorPrimaryButton = accent.c
 			theme.ColorAccentSoft = color.NRGBA{R: accent.c.R, G: accent.c.G, B: accent.c.B, A: 0x24}
 			theme.ColorAccentLine = color.NRGBA{R: accent.c.R, G: accent.c.G, B: accent.c.B, A: 0x66}
@@ -511,7 +510,7 @@ func buildAboutSettings(w fyne.Window, fyneApp fyne.App, appState *app.AppState)
 	productInfo := container.NewVBox(
 		theme.SectionEyebrow("PASSQUANTUM"),
 		canvas.NewText("PassQuantum", theme.ColorTextPrimary),
-		theme.MonoText("v1.1.4-beta | PQ-Safe", 11, theme.ColorFg2),
+		theme.MonoText("v1.1.5-beta | PQ-Safe", 11, theme.ColorFg2),
 		canvas.NewText("A post-quantum cryptography password manager using Kyber and AES-256-GCM.", theme.ColorTextSecondary),
 	)
 
@@ -745,18 +744,13 @@ func applyExtractedPalette(colors []color.NRGBA) {
 	theme.ColorSecondaryButton = secondary
 
 	theme.ColorAccentCyan = primary
-	theme.ColorAccentCyn = theme.ColorAccentCyan
 	theme.ColorAccentPink = secondary
-	theme.ColorMagenta = theme.ColorAccentPink
 	theme.ColorPurple = color.NRGBA{R: secondary.R, G: secondary.G, B: secondary.B, A: 220}
 
 	theme.ColorBorderCyan = color.NRGBA{R: primary.R, G: primary.G, B: primary.B, A: 180}
-	theme.ColorBorder = theme.ColorBorderCyan
-	theme.ColorGlowCyan = color.NRGBA{R: primary.R, G: primary.G, B: primary.B, A: 80}
 
 	theme.ColorTextPrimary = theme.PickAdaptiveTextColor(theme.ColorBg)
 	theme.ColorTextSecondary = theme.PickAdaptiveTextColor(theme.ColorCardBg)
-	theme.ColorTextPrim = theme.ColorTextPrimary
 	theme.ColorTextSec = theme.ColorTextSecondary
 }
 
@@ -767,19 +761,14 @@ func resetDefaultPalette() {
 	theme.ColorInputBg = color.NRGBA{R: 0x0e, G: 0x12, B: 0x18, A: 255}
 
 	theme.ColorAccentCyan = color.NRGBA{R: 0x2d, G: 0xd4, B: 0xbf, A: 255}
-	theme.ColorAccentCyn = theme.ColorAccentCyan
 	theme.ColorAccentPink = theme.ColorAccentCyan
-	theme.ColorMagenta = theme.ColorAccentPink
 	theme.ColorPurple = color.NRGBA{R: 0x6b, G: 0x77, B: 0x85, A: 255}
 
 	theme.ColorTextPrimary = color.NRGBA{R: 0xea, G: 0xee, B: 0xf2, A: 255}
 	theme.ColorTextSecondary = color.NRGBA{R: 0xae, G: 0xb6, B: 0xc2, A: 255}
-	theme.ColorTextPrim = theme.ColorTextPrimary
 	theme.ColorTextSec = theme.ColorTextSecondary
 
 	theme.ColorBorderCyan = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x1a}
-	theme.ColorBorder = theme.ColorBorderCyan
-	theme.ColorGlowCyan = color.NRGBA{R: 0x2d, G: 0xd4, B: 0xbf, A: 0x24}
 
 	theme.ColorPrimaryButton = theme.ColorAccentCyan
 	theme.ColorSecondaryButton = color.NRGBA{R: 0x1a, G: 0x20, B: 0x30, A: 255}

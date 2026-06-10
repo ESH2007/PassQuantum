@@ -1,8 +1,6 @@
 package crypto
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	cryptoRand "crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
@@ -117,11 +115,7 @@ func PQVaultEncrypt(plaintext []byte, password string) ([]byte, error) {
 
 	// ── Step 9: AES-256-GCM encrypt the plaintext. ────────────────────────────
 	// Seal appends the 16-byte GCM authentication tag to the ciphertext.
-	block, err := aes.NewCipher(aesKey)
-	if err != nil {
-		return nil, fmt.Errorf("pq_vault: AES init failed: %w", err)
-	}
-	gcm, err := cipher.NewGCM(block)
+	gcm, err := NewAES256GCM(aesKey)
 	if err != nil {
 		return nil, fmt.Errorf("pq_vault: GCM init failed: %w", err)
 	}
@@ -281,11 +275,7 @@ func PQVaultDecrypt(data []byte, password string) ([]byte, error) {
 	_ = nonce // referenced below
 
 	// ── Step 7: AES-256-GCM decrypt + authenticate. ───────────────────────────
-	block, err := aes.NewCipher(aesKey)
-	if err != nil {
-		return nil, fmt.Errorf("pq_vault: AES init failed: %w", err)
-	}
-	gcm, err := cipher.NewGCM(block)
+	gcm, err := NewAES256GCM(aesKey)
 	if err != nil {
 		return nil, fmt.Errorf("pq_vault: GCM init failed: %w", err)
 	}

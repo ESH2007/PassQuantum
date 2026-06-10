@@ -5,7 +5,9 @@ import (
 "fmt"
 "os"
 "path/filepath"
+"runtime"
 "strings"
+"sync"
 
 "passquantum/core/crypto"
 "passquantum/core/model"
@@ -13,6 +15,11 @@ import (
 )
 
 const appSecurityMetadataPath = storage.DefaultAppSecurityMetadataPath
+
+// maxRotationWorkers caps how many vaults are re-encrypted in parallel during a
+// master-password change. Each ReencryptVaultFile runs Argon2id (64 MB) for both
+// the old and new password, so this bounds peak memory regardless of core count.
+const maxRotationWorkers = 4
 
 // StartupAccessState describes what the login screen should present on startup.
 type StartupAccessState struct {
@@ -171,26 +178,74 @@ return fmt.Errorf("current password is incorrect")
 
 vaultNames := ListVaults()
 originalVaultData := make(map[string][]byte, len(vaultNames))
-preparedVaults := make([]preparedVaultRotation, 0, len(vaultNames))
+preparedVaults := make([]preparedVaultRotation, len(vaultNames))
 
-for _, vaultName := range vaultNames {
+// Re-encrypt vaults concurrently. This step is purely in-memory (no vault
+// file is written until staging below), so an error from any worker simply
+// aborts the whole change with nothing persisted. Parallelism is bounded by
+// maxRotationWorkers to keep Argon2id's memory cost in check.
+type rotationOutcome struct {
+path         string
+originalData []byte
+prepared     preparedVaultRotation
+err          error
+}
+
+if len(vaultNames) > 0 {
+workers := runtime.NumCPU()
+if workers > maxRotationWorkers {
+workers = maxRotationWorkers
+}
+if workers > len(vaultNames) {
+workers = len(vaultNames)
+}
+
+results := make([]rotationOutcome, len(vaultNames))
+sem := make(chan struct{}, workers)
+var wg sync.WaitGroup
+
+for i, vaultName := range vaultNames {
+wg.Add(1)
+go func(i int, vaultName string) {
+defer wg.Done()
+sem <- struct{}{}
+defer func() { <-sem }()
+
 vaultPath := GetVaultPath(vaultName)
 currentData, err := os.ReadFile(vaultPath)
 if err != nil {
-return fmt.Errorf("failed to read vault %s: %w", vaultName, err)
+results[i] = rotationOutcome{err: fmt.Errorf("failed to read vault %s: %w", vaultName, err)}
+return
 }
 
 rotatedData, err := storage.ReencryptVaultFile(vaultPath, currentPassword, newPassword)
 if err != nil {
-return fmt.Errorf("failed to rotate vault %s: %w", vaultName, err)
+results[i] = rotationOutcome{err: fmt.Errorf("failed to rotate vault %s: %w", vaultName, err)}
+return
 }
 
-originalVaultData[vaultPath] = currentData
-preparedVaults = append(preparedVaults, preparedVaultRotation{
+results[i] = rotationOutcome{
+path:         vaultPath,
+originalData: currentData,
+prepared: preparedVaultRotation{
 path:     vaultPath,
 tempPath: vaultPath + ".tmp",
 data:     rotatedData,
-})
+},
+}
+}(i, vaultName)
+}
+wg.Wait()
+
+for _, r := range results {
+if r.err != nil {
+return r.err
+}
+}
+for i, r := range results {
+originalVaultData[r.path] = r.originalData
+preparedVaults[i] = r.prepared
+}
 }
 
 newProfile, sessionEncryptionKey, sessionVerificationKey, err := crypto.CreateAppSecurityProfile(newPassword, appState.PrivateKey)

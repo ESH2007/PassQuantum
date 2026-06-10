@@ -46,7 +46,6 @@ var (
 	ColorLine2      = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x1a} // dividers (10%)
 	ColorLine3      = color.NRGBA{R: 0xff, G: 0xff, B: 0xff, A: 0x29} // emphasized (16%)
 	ColorBorderCyan = ColorLine2
-	ColorGlowCyan   = ColorAccentSoft
 
 	// Status
 	ColorDanger  = color.NRGBA{R: 0xd0, G: 0x4a, B: 0x4a, A: 255} // #d04a4a
@@ -74,12 +73,8 @@ var (
 	ColorWarnPillFg   = color.NRGBA{R: 0xf0, G: 0xd4, B: 0xa2, A: 255}
 	ColorDangerPillFg = color.NRGBA{R: 0xf3, G: 0xa8, B: 0xa8, A: 255}
 
-	// Backward-compatibility aliases
-	ColorAccentCyn = ColorAccentCyan
-	ColorTextSec   = ColorTextSecondary
-	ColorTextPrim  = ColorTextPrimary
-	ColorBorder    = ColorBorderCyan
-	ColorMagenta   = ColorAccentPink
+	// Backward-compatibility alias (still read by the color picker)
+	ColorTextSec = ColorTextSecondary
 )
 
 // Sizing constants

@@ -1,19 +1,23 @@
 # PassQuantum
 
-PassQuantum is a Fyne desktop password manager built around post-quantum vault items, a global master-password gate, multiple encrypted vaults, password analysis tools, and a Python face-guard sidecar that can lock the app when your face disappears.
+PassQuantum is a Fyne desktop password manager built around post-quantum vault items, a global master-password gate, multiple encrypted vaults, password analysis tools, a browser-extension autofill bridge, and a Python face-guard sidecar that can lock the app when your face disappears.
 
-This README reflects the current code in `new-passquantum/`, including generated build assets and the current Windows self-contained build flow.
+This README reflects the current code in the repository, including generated build assets and the current Windows self-contained build flow.
 
 ## What the app currently does
 
 - Uses a global master password verified through `app-security.pqmeta`
 - Binds that verifier to the current `private.key` fingerprint
 - Stores multiple encrypted vaults in `vaults/*.pqdb`
-- Supports three vault item types:
+- Supports five vault item types:
   - Passwords
   - "Cyphered Note" items
   - Card items
-- Includes a password generator and a password checker
+  - TOTP / 2FA codes (manual entry, QR import, Google Authenticator export)
+  - Encrypted files (arbitrary documents stored inside a vault)
+- Imports from 11 other password managers (1Password, Bitwarden, KeePass, LastPass, Dashlane, NordPass, Proton Pass, Kaspersky, Chrome/Brave/Edge, Firefox, and generic CSV)
+- Includes a password generator and a password strength analyzer
+- Ships a browser extension that autofills and saves credentials by talking to a localhost-only server (`127.0.0.1:8765`) gated by a pairing token
 - Starts a face-guard subprocess that can:
   - train a local face profile
   - monitor the webcam continuously after unlock
@@ -41,20 +45,31 @@ This README reflects the current code in `new-passquantum/`, including generated
 
 | Path | Purpose |
 | --- | --- |
-| `core/crypto/` | KDF, vault encryption, Kyber, app-security profile logic |
-| `core/model/` | Vault entry types and binary serialization |
-| `core/storage/` | Vault persistence, metadata persistence, migration helpers |
-| `ui/` | Fyne UI, navigation, dialogs, face-guard bridge, embedded bundle support |
+| `app/` | Application lifecycle: `AppState`, startup access control, vault CRUD, master-password rotation |
+| `bridge/` | Face-guard sidecar manager (TCP IPC) and companion-app kill list |
+| `core/crypto/` | KDF, vault encryption (legacy + PQ), Kyber768/Dilithium3, app-security profile logic |
+| `core/model/` | Vault entry types (Password, Note, Card, TOTP, File) and binary serialization |
+| `core/storage/` | Vault persistence, metadata persistence, key-rotation helpers |
+| `core/filevault/` | Encrypted per-file storage and manifest |
+| `core/migration/` | Import framework and parsers for 11 password managers |
+| `core/totp/` | TOTP generation, `otpauth://` parsing, QR/Google-Authenticator decoding |
+| `internal/storage/` | Low-level secure file I/O, OS keyring, Windows DPAPI |
+| `internal/browser/` | Localhost autofill server for the browser extension |
+| `ui/` | Fyne app entry point and embedded-bundle support |
+| `ui/screens/` | All application screens and view-builders |
+| `ui/widgets/` | Shared dialogs and native file pickers |
+| `theme/` | Design tokens, fonts, icons, and widget factories |
 | `strength/` | Password analysis, scoring, issue detection, generator helpers |
 | `palette/` | Image-based palette extraction helpers |
 | `python/` | Face-guard Python sidecar (face_guard.py, face_authenticator.py, liveness_detector.py, geometric_encoder.py) |
-| `docs/` | Architecture, security, UX, and specification documents |
-| `models/` | Face-landmarker model asset documentation and required task file |
+| `extension/` | Browser extension (Manifest V3) source |
+| `landing page/` | Marketing website (React/Vite), deployed to GitHub Pages |
+| `docs/` | Architecture, security, and UX documents |
+| `models/` | Face-landmarker model asset and required task file |
+| `legacy/` | Archived prototypes, kept for reference only |
 | `cmd/test-vault/` | Manual vault test utility |
 | `build/` | Local build outputs |
-| `fyne-cross/` | Cross-build outputs and temporary packaging artifacts |
-| `.venv-faceguard/` | Isolated Windows build-time Python environment |
-| `vendor/` | Vendored Go dependencies |
+| `.venv-faceguard/` | Isolated build-time Python environment (created on demand by the build scripts) |
 
 ## Security model summary
 
@@ -184,14 +199,11 @@ This only needs to be done once.
 
 ## Current UI surface
 
-After unlock, the app uses a sidebar with these views:
+After a vault is opened, the app uses a grouped sidebar:
 
-- Vaults
-- Passwords
-- Generate
-- Check Password
-- Settings
-- Lock & Exit
+- **Vault** — Vaults, Add item, Items, Authenticator (TOTP), Files, Import
+- **Tools** — Generate, Analyze (password strength)
+- **System** — Settings, Collapse/Expand sidebar, Lock vault
 
 The Settings area currently has four sections:
 
@@ -216,13 +228,14 @@ Some settings actions are real today, and some are placeholders that only show i
 - [`docs/SECURITY_ARCHITECTURE.md`](docs/SECURITY_ARCHITECTURE.md) — security model and threat boundaries
 - [`docs/USER_EXPERIENCE.md`](docs/USER_EXPERIENCE.md) — screen-by-screen product behavior
 - [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — practical setup and usage instructions
-- [`docs/GO_APP_SPECIFICATION.md`](docs/GO_APP_SPECIFICATION.md) — additional implementation notes and file coverage
+
+Most packages also carry their own `README.md` with a file-by-file overview.
 
 ## Development notes
 
-- The project vendors Go dependencies in `vendor/`.
+- Go dependencies are resolved via the module cache (no committed `vendor/` tree); run `go mod download` if needed.
 - The face-guard Python tooling lives in `python/`. See [`python/README.md`](python/README.md) for setup instructions.
-- `.venv-faceguard/`, `build/`, and `fyne-cross/` contain generated or packaging artifacts.
+- `.venv-faceguard/` and `build/` contain generated or packaging artifacts created by the build scripts.
 - `models/face_landmarker.task` is required for the MediaPipe-based face workflow.
 
 ## Support expectations

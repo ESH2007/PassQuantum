@@ -18,14 +18,15 @@ If you lose the private key, the app-security profile, or the vault files togeth
 
 ### Option A: simple developer build
 
-From `new-passquantum/`:
+From the repository root:
 
-```powershell
-go build -o build\PassQuantum.exe .\ui
-.\build\PassQuantum.exe
+```bash
+go build -o build/PassQuantum ./ui
+./build/PassQuantum
 ```
 
-This is the easiest local build for development.
+This is the easiest local build for development (use `build\PassQuantum.exe` and
+`.\ui` on Windows PowerShell).
 
 ### Option B: self-contained Windows build
 
@@ -42,12 +43,25 @@ Notes:
 - It then embeds that bundle into `PassQuantum.exe`.
 - It prefers MSYS2 MinGW-w64 GCC from `C:\msys64\mingw64\bin\gcc.exe`.
 
-### Option C: Linux helper script
+### Option C: Linux build script
 
 ```bash
-./build-native.sh
+./build.sh linux
 ./build/linux/PassQuantum
 ```
+
+This builds the PyInstaller face bundle when possible and links it into the
+binary; otherwise it copies the Python sources and `models/` alongside the app.
+
+### Option D: macOS native build
+
+```bash
+./build.sh mac        # or ./build-mac-native.sh
+open build/mac/PassQuantum.app
+```
+
+Produces a self-contained, ad-hoc-signed `.app`/`.dmg` with the face bundle
+embedded.
 
 ## 3. First launch
 
@@ -90,11 +104,14 @@ The app uses the already unlocked global master password automatically.
 
 ## 6. Adding items
 
-Open the `Passwords` view and choose the item type:
+Open the `Add item` view and choose the item type:
 
 - `Password`
 - `Cyphered Note`
 - `Card`
+- `TOTP`
+
+(Encrypted files are added from the `Files` view — see §8.)
 
 ### Save a password
 
@@ -128,19 +145,69 @@ Fill in:
 
 Then click `SAVE ITEM`.
 
+### Save a TOTP code
+
+Add a 2FA entry in one of three ways:
+
+- paste an `otpauth://totp/...` URI,
+- import a QR code image, or
+- import a Google Authenticator export (`otpauth-migration://...`).
+
+The entry then appears in the `Authenticator` view with a live code.
+
 ## 7. Viewing, editing, and deleting items
 
-Click `VIEW ALL ITEMS` from the Passwords screen.
+Open the `Items` view.
 
 Available actions:
 
 - **passwords**: show, copy, edit, delete
 - **notes**: view, copy, delete
 - **cards**: show, copy, delete
+- **TOTP**: live code with countdown, copy (auto-clears from clipboard)
 
 Deleting an item is permanent.
 
-## 8. Using the password generator
+## 8. Storing files
+
+Open the `Files` view to keep encrypted files inside the current vault:
+
+- **Add a file** — pick a file; it is encrypted and copied into the vault's file
+  store.
+- **Open a file** — it is decrypted to a temporary location for viewing, then
+  securely deleted afterward.
+- **Retrieve** — save a decrypted copy to a path you choose.
+- **Delete** — permanently removes the stored file.
+
+## 9. Importing from another password manager
+
+Open the `Import` view and follow the wizard:
+
+1. **Pick** the source (or let auto-detection identify it from the file).
+2. **Parse** the export.
+3. **Preview** the entries that will be imported.
+4. **Import** — entries are encrypted into the current vault, skipping duplicates.
+
+Supported sources: 1Password (1PUX), Bitwarden (CSV/JSON), KeePass/KeePassXC,
+LastPass, Dashlane, NordPass, Proton Pass, Kaspersky (TXT), Chrome/Brave/Edge/
+Opera/Vivaldi, Firefox, and a generic CSV fallback.
+
+Export the data from your old manager first, then point the wizard at the file.
+
+## 10. Pairing the browser extension
+
+To autofill in your browser:
+
+1. Load the extension from the `extension/` folder (Chrome/Edge: *Load unpacked*;
+   Firefox: *Load Temporary Add-on*).
+2. In the app, open the pairing dialog to display a one-time token.
+3. Enter the token in the extension popup.
+
+Once paired and with a vault unlocked, the extension autofills matching logins and
+offers to save new ones. It only talks to the app over `127.0.0.1:8765`; locking
+the vault cuts off access.
+
+## 11. Using the password generator
 
 Open the `Generate` view.
 
@@ -159,9 +226,9 @@ Then:
 - optionally `COPY`
 - or `SAVE TO VAULT`
 
-## 9. Using the password checker
+## 12. Using the password checker
 
-Open the `Check Password` view.
+Open the `Analyze` view.
 
 Type any password to see:
 
@@ -172,7 +239,7 @@ Type any password to see:
 
 The checker also compares against passwords already stored in your current vault.
 
-## 10. Changing the master password
+## 13. Changing the master password
 
 1. Go to `Settings`
 2. Open `Security`
@@ -187,7 +254,7 @@ On success the app:
 - updates `app-security.pqmeta`
 - re-encrypts every vault with keys derived from the new password
 
-## 11. Face-guard usage
+## 14. Face-guard usage
 
 If the face guard is available, PassQuantum uses a Python subprocess to monitor the webcam.
 
@@ -208,7 +275,7 @@ After unlock:
 
 If you configured monitored apps in `Settings -> Security`, those apps will be force-closed at that moment.
 
-## 12. Settings you can rely on today
+## 15. Settings you can rely on today
 
 ### Fully or mostly implemented
 
@@ -219,30 +286,36 @@ If you configured monitored apps in `Settings -> Security`, those apps will be f
 - app icon replacement
 - palette reset
 
+- import from other password managers (the `Import` view — §9)
+- TOTP / authenticator codes (§6)
+- encrypted file storage (§8)
+- browser-extension autofill (§10)
+
 ### Present but mostly placeholder
 
 - compact vault
-- export/import
-- backup now
-- restore
+- the Settings → Vaults export/backup/restore buttons
 - docs button
 - updates button
 
-Treat the second group as UI placeholders, not full backup features.
+Treat the second group as UI placeholders, not full backup features. (The
+Settings → Vaults `Import` button is also a placeholder — the working importer is
+the dedicated `Import` view.)
 
-## 13. Backup guidance
+## 16. Backup guidance
 
 Back up these together:
 
 - `public.key`
 - `private.key`
 - `app-security.pqmeta`
-- `vaults/`
+- `vaults/` (including any encrypted file store and manifest kept alongside it)
 - `face_data.npy` if you want to preserve face training
 
 If you move the app to another machine or folder, keep those files together.
+Losing `private.key` or `app-security.pqmeta` makes the vaults unrecoverable.
 
-## 14. Common problems
+## 17. Common problems
 
 ### The app keeps asking me to create a master password
 
@@ -282,7 +355,7 @@ Possible causes:
 - webcam access failure
 - missing `models\face_landmarker.task`
 
-## 15. Safe usage recommendations
+## 18. Safe usage recommendations
 
 - Choose a strong global master password
 - Back up keys and vaults before changing systems

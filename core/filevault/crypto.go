@@ -1,12 +1,12 @@
 package filevault
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"io"
+
+	"passquantum/core/crypto"
 )
 
 const ChunkSize = 64 * 1024 // 64 KB
@@ -33,11 +33,7 @@ func EncryptFileWithProgress(src io.Reader, dst io.Writer, sharedSecret []byte, 
 		return fmt.Errorf("filevault: shared secret must be at least 32 bytes")
 	}
 
-	block, err := aes.NewCipher(sharedSecret[:32])
-	if err != nil {
-		return fmt.Errorf("filevault: aes init: %w", err)
-	}
-	gcm, err := cipher.NewGCM(block)
+	gcm, err := crypto.NewAES256GCM(sharedSecret[:32])
 	if err != nil {
 		return fmt.Errorf("filevault: gcm init: %w", err)
 	}
@@ -100,11 +96,7 @@ func DecryptFileWithProgress(src io.Reader, dst io.Writer, sharedSecret []byte, 
 		return fmt.Errorf("filevault: shared secret must be at least 32 bytes")
 	}
 
-	block, err := aes.NewCipher(sharedSecret[:32])
-	if err != nil {
-		return fmt.Errorf("filevault: aes init: %w", err)
-	}
-	gcm, err := cipher.NewGCM(block)
+	gcm, err := crypto.NewAES256GCM(sharedSecret[:32])
 	if err != nil {
 		return fmt.Errorf("filevault: gcm init: %w", err)
 	}

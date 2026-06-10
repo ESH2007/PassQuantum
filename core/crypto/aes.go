@@ -6,15 +6,22 @@ import (
 	"crypto/rand"
 )
 
+// NewAES256GCM builds an AES-256-GCM AEAD from key. key must be a valid AES key
+// length (16/24/32 bytes); callers using a longer shared secret should pass
+// key[:32]. Centralizing this avoids repeating the aes.NewCipher + cipher.NewGCM
+// dance across the vault and file-vault pipelines.
+func NewAES256GCM(key []byte) (cipher.AEAD, error) {
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	return cipher.NewGCM(block)
+}
+
 // EncryptAES256GCM encrypts plaintext using AES-256-GCM with a given shared secret key
 // Returns the nonce and ciphertext
 func EncryptAES256GCM(plaintext string, sharedSecret []byte) ([]byte, []byte, error) {
-	block, err := aes.NewCipher(sharedSecret[:32])
-	if err != nil {
-		return nil, nil, err
-	}
-
-	gcm, err := cipher.NewGCM(block)
+	gcm, err := NewAES256GCM(sharedSecret[:32])
 	if err != nil {
 		return nil, nil, err
 	}
@@ -32,12 +39,7 @@ func EncryptAES256GCM(plaintext string, sharedSecret []byte) ([]byte, []byte, er
 // DecryptAES256GCM decrypts ciphertext using AES-256-GCM with a given shared secret key
 // Returns the plaintext
 func DecryptAES256GCM(nonce []byte, ciphertext []byte, sharedSecret []byte) (string, error) {
-	block, err := aes.NewCipher(sharedSecret[:32])
-	if err != nil {
-		return "", err
-	}
-
-	gcm, err := cipher.NewGCM(block)
+	gcm, err := NewAES256GCM(sharedSecret[:32])
 	if err != nil {
 		return "", err
 	}

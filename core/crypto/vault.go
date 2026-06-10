@@ -1,8 +1,6 @@
 package crypto
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -33,12 +31,7 @@ func EncryptVault(plaintext []byte, encryptionKey []byte, verificationKey []byte
 	}
 
 	// Create AES-GCM cipher
-	block, err := aes.NewCipher(encryptionKey)
-	if err != nil {
-		return nil, err
-	}
-
-	gcm, err := cipher.NewGCM(block)
+	gcm, err := NewAES256GCM(encryptionKey)
 	if err != nil {
 		return nil, err
 	}
@@ -88,12 +81,7 @@ func DecryptVault(vault *VaultFile, encryptionKey []byte, verificationKey []byte
 	ciphertext := vault.EncryptedData[12:]
 
 	// Create AES-GCM cipher
-	block, err := aes.NewCipher(encryptionKey)
-	if err != nil {
-		return nil, err
-	}
-
-	gcm, err := cipher.NewGCM(block)
+	gcm, err := NewAES256GCM(encryptionKey)
 	if err != nil {
 		return nil, err
 	}

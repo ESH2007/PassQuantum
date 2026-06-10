@@ -4,8 +4,14 @@ Package `bridge` manages the Python face-recognition sidecar process and compani
 
 ## Contents
 
-- **face_guard.go** — `FaceGuard` type: launches and communicates with `python/face_guard.py` over stdin/stdout
+- **face_guard.go** — `FaceGuard` type: opens a TCP listener on `127.0.0.1:9876`, launches `python/face_guard.py`, and exchanges line-oriented messages once the sidecar connects back
 - **face_guard_apps.go** — kill-list helpers: `LoadKillApps`, `SaveKillApps`, `ListRunningProcesses`, `KillProcessesByName`
+
+## Transport
+
+The Go side opens a TCP listener on `127.0.0.1:9876` *before* launching the
+sidecar, then the Python process connects back to that address. All commands and
+events below travel over that loopback connection as newline-delimited messages.
 
 ## FaceGuard IPC protocol
 

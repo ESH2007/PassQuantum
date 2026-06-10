@@ -6,9 +6,9 @@ This document describes the current user-facing behavior of the app as implement
 
 PassQuantum opens as a desktop Fyne application with:
 
-- a neon/dark visual style
-- a particle animated background
-- custom cards, dividers, and buttons
+- a dark visual style with a teal accent (`#2dd4bf` on a near-black blue-grey background)
+- a subtle animated particle background
+- custom cards, dividers, pills, and buttons from the `theme` design system
 - a single-window flow that changes content rather than opening many independent windows
 
 The app title is:
@@ -79,14 +79,11 @@ This is a strong UX behavior and should be treated carefully because monitored a
 
 ## 4. Main navigation model
 
-After a vault is opened, the app uses a left sidebar with these destinations:
+After a vault is opened, the app uses a grouped left sidebar:
 
-- Vaults
-- Passwords
-- Generate
-- Check Password
-- Settings
-- Lock & Exit
+- **Vault:** Vaults, Add item, Items, Authenticator (TOTP), Files, Import
+- **Tools:** Generate, Analyze
+- **System:** Settings, Collapse/Expand sidebar, Lock vault
 
 The content area on the right changes in place.
 
@@ -110,9 +107,9 @@ Deleting a vault:
 - requires confirmation
 - removes the `.pqdb` file permanently
 
-## 6. Passwords view
+## 6. Add item view
 
-The main passwords screen is really an **Add Vault Item** screen.
+The `Add item` screen is the main vault-item entry form.
 
 ### 6.1 Supported item types
 
@@ -121,8 +118,10 @@ Users can add:
 - `Password`
 - `Cyphered Note`
 - `Card`
+- `TOTP`
 
-The form changes dynamically based on the selected item type.
+The form changes dynamically based on the selected item type. (Encrypted files
+are added from the dedicated Files view rather than this form.)
 
 ### 6.2 Password item UX
 
@@ -179,7 +178,54 @@ That list supports:
 - note view/copy/delete
 - card show/copy/delete
 
-## 7. Password generator experience
+## 7. Authenticator (TOTP) view
+
+The Authenticator view manages 2FA codes. Users can add a TOTP entry by:
+
+- scanning/importing a QR code image,
+- pasting an `otpauth://totp/...` URI, or
+- importing a Google Authenticator export (`otpauth-migration://...`).
+
+Each stored entry shows a live 6/8-digit code with a countdown bar that refreshes
+as the period rolls over. Copying a code places it on the clipboard and clears it
+automatically after a short delay.
+
+## 8. Files view
+
+The Files view stores arbitrary files inside the current vault, each encrypted
+individually. Users can:
+
+- add a file (it is encrypted and copied into the vault's file store),
+- open a file (decrypted to a temporary location for viewing, then securely
+  deleted afterward),
+- retrieve/save a decrypted copy to a chosen path, and
+- delete a stored file.
+
+A file-type icon and size are shown per item.
+
+## 9. Import view
+
+The Import view is a wizard that migrates data from other password managers:
+
+1. **Pick** — choose the source manager (or let auto-detection pick from the file).
+2. **Parse** — the export is read and parsed into a normalized preview.
+3. **Preview** — review the entries that will be imported.
+4. **Import** — entries are encrypted into the current vault, de-duplicating
+   against existing items.
+
+Supported sources include 1Password, Bitwarden, KeePass/KeePassXC, LastPass,
+Dashlane, NordPass, Proton Pass, Kaspersky, Chromium browsers, Firefox, and a
+generic CSV fallback.
+
+## 10. Browser extension pairing
+
+The app can pair with the PassQuantum browser extension for autofill. The pairing
+dialog displays a short-lived token; the user enters it in the extension's popup.
+Once paired and with a vault unlocked, the extension autofills matching logins and
+offers to save new ones over a loopback-only connection. Per-site "never save"
+choices are remembered.
+
+## 11. Password generator experience
 
 The generator screen lets the user configure:
 
@@ -198,7 +244,7 @@ Actions:
 
 The screen is integrated into the main app instead of being a separate tool window.
 
-## 8. Password checker experience
+## 12. Password checker experience
 
 The checker screen gives:
 
@@ -219,7 +265,7 @@ The analysis considers:
 
 There is also an easter-egg mode when the input includes `neal.fun`.
 
-## 9. Settings experience
+## 13. Settings experience
 
 The settings area uses four custom tab-like sections:
 
@@ -228,7 +274,7 @@ The settings area uses four custom tab-like sections:
 - Visuals
 - About
 
-### 9.1 Security section
+### 13.1 Security section
 
 Currently implemented:
 
@@ -237,7 +283,7 @@ Currently implemented:
 - warnings about force-kill behavior
 - refresh of the process list
 
-### 9.2 Vaults section
+### 13.2 Vaults section
 
 Currently shown:
 
@@ -254,8 +300,11 @@ Current implementation status:
 - `RESTORE` -> confirmation + informational dialog
 
 So this section is present in the UX, but most of its actions are placeholders today.
+Note that the `IMPORT` button here is **not** the real importer — actual import
+from other password managers is the dedicated **Import** sidebar view (§9), which
+is fully implemented.
 
-### 9.3 Visuals section
+### 13.3 Visuals section
 
 This section is much more complete.
 
@@ -271,7 +320,7 @@ Implemented features:
 - change app icon from image file
 - reset app icon
 
-### 9.4 About section
+### 13.4 About section
 
 The About screen currently shows:
 
@@ -286,9 +335,9 @@ Current implementation status:
 - Docs button -> informational dialog
 - Updates button -> informational dialog
 
-## 10. Locking and exit behavior
+## 14. Locking and exit behavior
 
-The sidebar includes `Lock & Exit`.
+The sidebar's System group includes `Lock vault`.
 
 Current behavior:
 
@@ -297,15 +346,19 @@ Current behavior:
 
 Face-loss locking returns the app to the unlock flow without quitting.
 
-## 11. What is real vs. what is aspirational
+## 15. What is real vs. what is aspirational
 
 ### Real today
 
 - global master-password gate
 - multi-vault workflow
-- typed vault items
+- typed vault items (password, note, card, TOTP, file)
+- TOTP / authenticator codes (manual, QR, Google Authenticator import)
+- encrypted file storage
+- import from 11 other password managers (the Import view)
+- browser-extension autofill with pairing
 - password generator
-- password checker
+- password strength analyzer
 - theme/palette/icon customization
 - face training and face monitoring
 - monitored-app kill list
@@ -314,12 +367,11 @@ Face-loss locking returns the app to the unlock flow without quitting.
 ### Present in UI but mostly placeholder
 
 - compact vault
-- export/import
-- backup/restore
+- the Settings → Vaults export/import/backup/restore buttons (the real importer is the Import view above)
 - docs link behavior
 - update check behavior
 
-## 12. Files a user will notice
+## 16. Files a user will notice
 
 Depending on the workflow, users may notice:
 
@@ -334,15 +386,19 @@ For packaged builds they may also encounter:
 - `PassQuantum.exe`
 - `face_guard_bundle.exe` during packaging workflows
 
-## 13. Practical UX summary
+## 17. Practical UX summary
 
 The current product experience is:
 
 - unlock once with a global master password
 - choose a vault
-- manage encrypted items from a sidebar shell
-- use generator/checker tools in the same app
+- manage encrypted items (passwords, notes, cards, TOTP, files) from a sidebar shell
+- import existing credentials from other password managers
+- use generator/analyzer tools in the same app
+- autofill in the browser via the paired extension
 - optionally rely on face monitoring to auto-lock when away
 - personalize the look and icon locally
 
-That is the current implemented experience; the docs should not present backup/export/import or online support flows as fully shipped features.
+That is the current implemented experience; the docs should not present the
+Settings → Vaults backup/export/restore buttons or online support flows as fully
+shipped features.
